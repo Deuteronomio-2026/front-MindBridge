@@ -1,0 +1,39 @@
+name: CI — MindBridge Frontend
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-lint:
+    name: Build, Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+      
+      - name: Lint
+        run: npx eslint scr --ext .ts,.tsx
+
+      - name: Build
+        run: npm run build
