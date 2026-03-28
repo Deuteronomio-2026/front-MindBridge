@@ -33,7 +33,7 @@ jobs:
         run: npx tsc --noEmit
       
       - name: Lint
-        run: npx eslint scr --ext .ts,.tsx
+        run: npx eslint src --ext .ts,.tsx
 
       - name: Build
         run: npm run build
