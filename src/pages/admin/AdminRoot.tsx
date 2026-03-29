@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { Outlet, useNavigate, useLocation, Link, href } from "react-router";
 import {
-  Brain, LayoutDashboard, Users, FileText, Activity,
+  Brain, LayoutDashboard, Users, FileText,
   Bell, ChevronDown, LogOut, Menu, X, Shield, BarChart3
 } from "lucide-react";
 
 import { Tag } from "lucide-react";
 
 const TEAL = "#1A4A5C";
-const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
-const MINT = "#A8D5C2";
+
 
 const navLinks = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },

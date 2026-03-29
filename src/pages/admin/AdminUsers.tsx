@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, UserCheck, UserX, Shield } from "lucide-react";
+import { Search} from "lucide-react";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";

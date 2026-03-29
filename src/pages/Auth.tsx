@@ -7,7 +7,6 @@ const TEAL_DARK = "#0D2E38";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
-const SAND = "#F5EDD8";
 const MINT = "#A8D5C2";
 
 const roles = [

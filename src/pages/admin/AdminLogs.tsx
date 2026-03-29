@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Search, Filter, RefreshCw, Download, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, Download, ChevronDown } from "lucide-react";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
-const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
 

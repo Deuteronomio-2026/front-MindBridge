@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
-  Users, Calendar, TrendingUp, AlertTriangle, CheckCircle,
-  Clock, Cpu, Wifi, Activity, BarChart3, ArrowUpRight, ArrowDownRight,
-  Zap, Shield, RefreshCw, ChevronRight, FileText
+  Users, Calendar, TrendingUp, AlertTriangle,
+  Clock, Wifi, BarChart3, ArrowUpRight, ArrowDownRight,
+  Zap, RefreshCw, ChevronRight, FileText
 } from "lucide-react";
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
@@ -14,7 +14,6 @@ const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
-const SAND = "#F5EDD8";
 const MINT = "#A8D5C2";
 
 // --- Mock data ---
@@ -349,7 +348,7 @@ export default function AdminDashboard() {
             </button>
           </div>
           <div className="font-mono text-xs" style={{ background: "#0F1B22" }}>
-            {recentLogs.map((log, idx) => {
+            {recentLogs.map((log) => {
               const meta = logLevelStyle[log.level];
               return (
                 <div
