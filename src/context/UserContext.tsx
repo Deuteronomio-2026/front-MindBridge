@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useState } from "react";
 import type { ReactNode } from "react";
 
 export interface Appointment {
@@ -9,7 +9,7 @@ export interface Appointment {
   specialty: string;
   sessionType: "primera" | "seguimiento";
   modality: "video" | "presencial" | "chat";
-  date: string; // ISO date string
+  date: string;
   time: string;
   price: number;
   status: "upcoming" | "completed" | "cancelled";
@@ -22,7 +22,7 @@ export interface UserProfile {
   photo: string | null;
 }
 
-interface UserContextType {
+export interface UserContextType {
   profile: UserProfile;
   appointments: Appointment[];
   updateProfile: (updates: Partial<UserProfile>) => void;
@@ -30,7 +30,7 @@ interface UserContextType {
   cancelAppointment: (id: string) => void;
 }
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+export const UserContext = createContext<UserContextType | undefined>(undefined);
 
 const defaultProfile: UserProfile = {
   name: "Ana García",
@@ -44,11 +44,14 @@ const defaultAppointments: Appointment[] = [
     id: "apt-1",
     psychologistId: "2",
     psychologistName: "Dr. Carlos Mendez",
-    psychologistPhoto: "https://images.unsplash.com/photo-1666113604293-d34734339acb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+    psychologistPhoto:
+      "https://images.unsplash.com/photo-1666113604293-d34734339acb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     specialty: "Terapia Cognitivo-Conductual",
     sessionType: "primera",
     modality: "video",
-    date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0],
     time: "10:00",
     price: 55,
     status: "upcoming",
@@ -57,11 +60,14 @@ const defaultAppointments: Appointment[] = [
     id: "apt-2",
     psychologistId: "1",
     psychologistName: "Dra. Sofía Ramírez",
-    psychologistPhoto: "https://images.unsplash.com/photo-1733685318562-c726472bc1db?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+    psychologistPhoto:
+      "https://images.unsplash.com/photo-1733685318562-c726472bc1db?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     specialty: "Ansiedad y Depresión",
     sessionType: "seguimiento",
     modality: "presencial",
-    date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0],
     time: "14:00",
     price: 70,
     status: "completed",
@@ -70,7 +76,8 @@ const defaultAppointments: Appointment[] = [
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
-  const [appointments, setAppointments] = useState<Appointment[]>(defaultAppointments);
+  const [appointments, setAppointments] =
+    useState<Appointment[]>(defaultAppointments);
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     setProfile((prev) => ({ ...prev, ...updates }));
@@ -82,19 +89,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const cancelAppointment = (id: string) => {
     setAppointments((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: "cancelled" as const } : a))
+      prev.map((a) =>
+        a.id === id ? { ...a, status: "cancelled" } : a
+      )
     );
   };
 
   return (
-    <UserContext.Provider value={{ profile, appointments, updateProfile, addAppointment, cancelAppointment }}>
+    <UserContext.Provider
+      value={{
+        profile,
+        appointments,
+        updateProfile,
+        addAppointment,
+        cancelAppointment,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );
-}
-
-export function useUser() {
-  const ctx = useContext(UserContext);
-  if (!ctx) throw new Error("useUser must be used within UserProvider");
-  return ctx;
 }

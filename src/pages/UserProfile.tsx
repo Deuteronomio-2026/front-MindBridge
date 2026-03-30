@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { Camera, Save, User, Mail, FileText, Check, AlertCircle } from "lucide-react";
-import { useUser } from "../context/UserContext";
+import { useUser } from "../hooks/useUser";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
