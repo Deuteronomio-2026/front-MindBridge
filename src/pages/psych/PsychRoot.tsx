@@ -4,7 +4,7 @@ import {
   Brain, Calendar, User, Menu, X, LayoutDashboard, CalendarDays,
   Bell, ChevronDown, LogOut, Settings, Sparkles
 } from "lucide-react";
-import { UserProvider } from "../../context/UserContext";
+import { UserProvider } from "../../context/UserProvider";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
