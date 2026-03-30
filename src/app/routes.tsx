@@ -5,14 +5,15 @@ import { createBrowserRouter, Navigate } from "react-router";
 // import Psychologists from "./pages/Psychologists";
 // import PsychologistDetail from "./pages/PsychologistDetail";
 // import Booking from "./pages/Booking";
-// import UserProfile from "./pages/UserProfile";
+import UserProfile from "../pages/UserProfile";
 // import Appointments from "./pages/Appointments";
 // import NotFound from "./pages/NotFound";
 // import ChatSession from "./pages/ChatSession";
-// import PsychRoot from "./pages/psych/PsychRoot";
-// import PsychHome from "./pages/psych/PsychHome";
-// import PsychSchedule from "./pages/psych/PsychSchedule";
-// import PsychAppointments from "./pages/psych/PsychAppointments";
+import PsychOffers from "../pages/psych/PsychOffer";
+import PsychRoot from "../pages/psych/PsychRoot";
+import PsychHome from "../pages/psych/PsychHome";
+import PsychSchedule from "../pages/psych/PsychSchedule";
+import PsychAppointments from "../pages/psych/PsychAppointments";
 import Auth from "../pages/Auth";
 import AdminRoot from "../pages/admin/AdminRoot";
 import AdminDashboard from "../pages/admin/AdminDashboard";
@@ -47,16 +48,18 @@ export const router = createBrowserRouter([
   //     { path: "*", Component: NotFound },
   //   ],
   // },
-  // {
-  //   path: "/panel-psicologo",
-  //   Component: PsychRoot,
-  //   children: [
-  //     { index: true, Component: PsychHome },
-  //     { path: "citas", Component: PsychAppointments },
-  //     { path: "agenda", Component: PsychSchedule },
-  //     { path: "perfil", Component: UserProfile },
-  //   ],
-  // },
+ {
+   path: "/panel-psicologo",
+   Component: PsychRoot,
+   children: [
+    { index: true, Component: PsychHome },
+     { path: "citas", Component: PsychAppointments },
+     { path: "agenda", Component: PsychSchedule },
+     { path: "perfil", Component: UserProfile },
+     { path: "ofertas", Component: PsychOffers },
+
+  ],
+  },
   {
     path: "/admin",
     Component: AdminRoot,
