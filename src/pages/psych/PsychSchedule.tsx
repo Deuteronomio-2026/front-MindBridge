@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Clock, Save, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, Clock, Save} from "lucide-react";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
