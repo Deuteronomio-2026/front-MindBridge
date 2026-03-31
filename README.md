@@ -79,56 +79,82 @@ export default defineConfig([
 ## 📁 Estructura de Carpetas
 
 ```bash
-src/
-├── app/
-│   ├── App.tsx                  # Componente raíz
-│   └── router.tsx               # Configuración de rutas
+project-root/
 │
-├── assets/                      # Imágenes, íconos y recursos estáticos
+├── public/                      
 │
-├── components/                  # Componentes reutilizables globales
-│                                # (botones, inputs, modales, etc.)
-│
-├── context/                     # Contextos globales
-│   ├── UserContext.ts           # createContext (SIN lógica)
-│   ├── UserProvider.tsx         # Provider (estado + lógica)
-│   └── user.types.ts            # Tipos del dominio usuario
-│
-├── hooks/                       # Custom hooks reutilizables
-│   └── useUser.ts               # Hook para consumir UserContext
-│
-├── data/                        # Datos mock (temporal / desarrollo)
-│   └── psychologists.ts
-│
-├── features/                    # Lógica por dominio (feature-based)
-│   ├── offers/
-│   └── psychologists/
-│
-├── pages/                       # Vistas principales (rutas)
-│   ├── Auth.tsx
+├── src/
 │   │
-│   ├── admin/
-│   │   └── ...
+│   ├── app/                    
+│   │   ├── App.tsx              
+│   │   └── router.tsx           
 │   │
-│   └── psych/
-│       ├── PsychRoot.tsx        # Layout principal del psicólogo
-│       │
-│       ├── home/
-│       │   └── PsychHome.tsx
-│       │
-│       ├── appointments/
-│       │   └── PsychAppointments.tsx
-│       │
-│       ├── schedule/
-│       │   └── PsychSchedule.tsx
-│       │
-│       └── profile/
-│           └── ...
+│   ├── assets/                  
+│   ├── components/   
+│   │   ├── Footer.tsx
+│   │   ├── Navbar.tsx
+│   │   ├── PsychologistCard.tsx
+│   │   └── StartRating.tsx      
+│   │
+│   ├── context/    
+│   │   ├── UserProvider.tsx
+│   │   └── UserContext.tsx
+│   │
+│   ├── hooks/                   
+│   │   └── useUser.ts
+│   │
+│   ├── data/                   
+│   │   └── psychologists.ts
+│   │
+│   ├── types/                  
+│   │   └── user.ts
+│   │
+│   ├── features/ 
+|   |
+│   ├── services/                
+│   │   
+│   ├── store/                   
+│   │   
+│   │
+│   ├── styles/                  
+│   │   ├── fonts.css
+│   │   ├── index.css
+│   │   ├── tailwind.css
+|   |   └── theme.css
+|   |   
+│   │
+│   ├── pages/                  
+│   │   │
+│   │   ├── Auth.tsx
+│   │   ├── UserProfile.tsx
+│   │   │
+│   │   ├── patient/            
+│   │   │   ├── Root.tsx
+│   │   │   ├── Home.tsx
+│   │   │   ├── Psychologists.tsx
+│   │   │   ├── PsychologistDetail.tsx
+│   │   │   ├── Booking.tsx
+│   │   │   ├── Appointments.tsx
+│   │   │   ├── ChatSession.tsx
+│   │   │   └── NotFound.tsx
+│   │   │
+│   │   ├── psych/               
+│   │   │   ├── PsychHome.tsx
+│   │   │   ├── PsychSchedule.tsx
+│   │   │   ├── PsychAppointments.tsx
+│   │   │   └── PsychOffer.tsx
+│   │   │
+│   │   └── admin/              
+│   │       ├── AdminDashboard.tsx
+│   │       ├── AdminMetrics.tsx
+│   │       ├── AdminLogs.tsx
+│   │       ├── AdminUsers.tsx
+│   │       └── AdminOffers.tsx
+│   │
+│   ├── main.tsx                 
+│          
 │
-├── services/                    # Llamadas a APIs
-│
-├── store/                       # Estado global (futuro: Zustand/Redux)
-│
-├── styles/                      # Estilos globales
-│
-└── main.tsx                     # Entry point
+├── package.json
+├── tsconfig.json
+├── vite.config.ts 
+└── README.md
