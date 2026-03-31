@@ -73,3 +73,62 @@ export default defineConfig([
   },
 ])
 ```
+---
+---
+
+## 📁 Estructura de Carpetas
+
+```bash
+src/
+├── app/
+│   ├── App.tsx                  # Componente raíz
+│   └── router.tsx               # Configuración de rutas
+│
+├── assets/                      # Imágenes, íconos y recursos estáticos
+│
+├── components/                  # Componentes reutilizables globales
+│                                # (botones, inputs, modales, etc.)
+│
+├── context/                     # Contextos globales
+│   ├── UserContext.ts           # createContext (SIN lógica)
+│   ├── UserProvider.tsx         # Provider (estado + lógica)
+│   └── user.types.ts            # Tipos del dominio usuario
+│
+├── hooks/                       # Custom hooks reutilizables
+│   └── useUser.ts               # Hook para consumir UserContext
+│
+├── data/                        # Datos mock (temporal / desarrollo)
+│   └── psychologists.ts
+│
+├── features/                    # Lógica por dominio (feature-based)
+│   ├── offers/
+│   └── psychologists/
+│
+├── pages/                       # Vistas principales (rutas)
+│   ├── Auth.tsx
+│   │
+│   ├── admin/
+│   │   └── ...
+│   │
+│   └── psych/
+│       ├── PsychRoot.tsx        # Layout principal del psicólogo
+│       │
+│       ├── home/
+│       │   └── PsychHome.tsx
+│       │
+│       ├── appointments/
+│       │   └── PsychAppointments.tsx
+│       │
+│       ├── schedule/
+│       │   └── PsychSchedule.tsx
+│       │
+│       └── profile/
+│           └── ...
+│
+├── services/                    # Llamadas a APIs
+│
+├── store/                       # Estado global (futuro: Zustand/Redux)
+│
+├── styles/                      # Estilos globales
+│
+└── main.tsx                     # Entry point

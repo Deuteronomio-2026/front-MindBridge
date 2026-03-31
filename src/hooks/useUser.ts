@@ -6,3 +6,4 @@ export const useUser = () => {
   if (!ctx) throw new Error("useUser must be used within UserProvider");
   return ctx;
 };
+
