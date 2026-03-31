@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Calendar, Video, Users, MessageCircle, Clock, XCircle, CheckCircle, AlertCircle, Plus, ExternalLink } from "lucide-react";
+import { Calendar, Video, Users, MessageCircle, Clock, XCircle, CheckCircle, AlertCircle, Plus } from "lucide-react";
 import { useUser } from "../../hooks/useUser";
 import type { Appointment } from "../../types/user";
 

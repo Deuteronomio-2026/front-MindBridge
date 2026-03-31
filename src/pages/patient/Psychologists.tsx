@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { Search, SlidersHorizontal, X, Star, LayoutGrid, List } from "lucide-react";
 import { psychologists, specialtyOptions} from "../../data/psychologists";
@@ -7,7 +7,6 @@ import { PsychologistCard } from "../../components/PsychologistCard";
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
-const SAGE = "#4E8B7A";
 
 const modalityOptions = [
   { value: "video", label: "Videollamada" },

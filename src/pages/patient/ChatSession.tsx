@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, Send, Video, Mic, MicOff, VideoOff, Phone, Smile,
-  Paperclip, MoreVertical, Clock, CheckCheck, MessageCircle, Users
+  Paperclip, MoreVertical, CheckCheck, MessageCircle, Users
 } from "lucide-react";
 import { useUser } from "../../hooks/useUser";
 import { psychologists } from "../../data/psychologists";
@@ -10,7 +10,6 @@ import { psychologists } from "../../data/psychologists";
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
-const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
 
 interface Message {

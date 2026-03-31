@@ -38,7 +38,6 @@ export default function Booking() {
   const [modality, setModality] = useState<Modality | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>({});
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -52,16 +51,21 @@ export default function Booking() {
     return psychologist && (psychologist.schedule[dayKey]?.length ?? 0) > 0;
   });
 
-  useEffect(() => {
-    if (!psychologist) return;
+  const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>(() => {
+    if (!psychologist) return {};
     const initial: Record<string, string[]> = {};
-    availableDates.forEach((d) => {
-      const dayKey = dayFromDate(d);
-      const slots = psychologist.schedule[dayKey] || [];
-      initial[d.toDateString()] = generateInitialBookedSlots(slots);
-    });
-    setBookedSlots(initial);
-  }, [psychologist?.id]);
+    Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + i + 1);
+      return d;
+    })
+      .filter((d) => (psychologist.schedule[dayFromDate(d)]?.length ?? 0) > 0)
+      .forEach((d) => {
+        const slots = psychologist.schedule[dayFromDate(d)] || [];
+        initial[d.toDateString()] = generateInitialBookedSlots(slots);
+      });
+    return initial;
+  });
 
   useEffect(() => {
     if (!psychologist) return;
@@ -93,6 +97,7 @@ export default function Booking() {
       }, 600);
     }, 30000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [psychologist?.id, selectedDate, selectedTime]);
 
   if (!psychologist) {
@@ -172,7 +177,6 @@ export default function Booking() {
   const formatDate = (date: Date) =>
     date.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
 
-  // SUCCESS STATE
   if (confirmed) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-12" style={{ background: FOG }}>
@@ -193,9 +197,7 @@ export default function Booking() {
                 <p className="text-slate-900" style={{ fontWeight: 700, fontSize: "0.95rem" }}>
                   {psychologist.title} {psychologist.name}
                 </p>
-                <p style={{ color: TEAL, fontSize: "0.8rem" }}>
-                  {psychologist.specialties[0]}
-                </p>
+                <p style={{ color: TEAL, fontSize: "0.8rem" }}>{psychologist.specialties[0]}</p>
               </div>
             </div>
             {[
@@ -234,7 +236,6 @@ export default function Booking() {
 
   return (
     <div className="min-h-screen" style={{ background: FOG }}>
-      {/* Header */}
       <div style={{ background: `linear-gradient(135deg, #0D2E38 0%, ${TEAL} 100%)` }} className="py-8 px-6">
         <div className="max-w-2xl mx-auto">
           <button
@@ -245,36 +246,27 @@ export default function Booking() {
             <ArrowLeft size={16} />
             Volver al perfil
           </button>
-
           <div className="flex items-center gap-4 mb-8">
             <img src={psychologist.photo} alt="" className="w-14 h-14 rounded-xl object-cover shadow-md" />
             <div>
               <h1 className="text-white" style={{ fontWeight: 700, fontSize: "1.2rem" }}>
                 Reservar con {psychologist.title} {psychologist.name}
               </h1>
-              <p style={{ color: MINT, fontSize: "0.85rem" }}>
-                {psychologist.specialties.join(" · ")}
-              </p>
+              <p style={{ color: MINT, fontSize: "0.85rem" }}>{psychologist.specialties.join(" · ")}</p>
             </div>
           </div>
-
-          {/* Progress steps */}
           <div className="flex items-center gap-2">
             {steps.map((s, idx) => (
               <div key={s.num} className="flex items-center gap-2 flex-1">
                 <div className="flex items-center gap-2">
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
-                    style={{
-                      background: step > s.num ? SAGE : step === s.num ? "white" : "rgba(255,255,255,0.2)",
-                    }}
+                    style={{ background: step > s.num ? SAGE : step === s.num ? "white" : "rgba(255,255,255,0.2)" }}
                   >
                     {step > s.num ? (
                       <Check size={13} className="text-white" strokeWidth={3} />
                     ) : (
-                      <span
-                        style={{ color: step === s.num ? TEAL : "rgba(255,255,255,0.5)", fontSize: "0.75rem", fontWeight: 700 }}
-                      >
+                      <span style={{ color: step === s.num ? TEAL : "rgba(255,255,255,0.5)", fontSize: "0.75rem", fontWeight: 700 }}>
                         {s.num}
                       </span>
                     )}
@@ -287,10 +279,7 @@ export default function Booking() {
                   </span>
                 </div>
                 {idx < steps.length - 1 && (
-                  <div
-                    className="flex-1 h-px mx-2"
-                    style={{ background: step > s.num ? `${SAGE}80` : "rgba(255,255,255,0.2)" }}
-                  />
+                  <div className="flex-1 h-px mx-2" style={{ background: step > s.num ? `${SAGE}80` : "rgba(255,255,255,0.2)" }} />
                 )}
               </div>
             ))}
@@ -298,50 +287,24 @@ export default function Booking() {
         </div>
       </div>
 
-      {/* Form content */}
       <div className="max-w-2xl mx-auto px-6 py-8">
-        {/* STEP 1 */}
         {step === 1 && (
           <div>
-            <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>
-              ¿Qué tipo de sesión necesitas?
-            </h2>
-            <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>
-              Esto nos ayuda a preparar la sesión de la mejor manera para ti.
-            </p>
+            <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>¿Qué tipo de sesión necesitas?</h2>
+            <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>Esto nos ayuda a preparar la sesión de la mejor manera para ti.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
               {[
-                {
-                  key: "primera" as SessionType,
-                  icon: UserPlus,
-                  title: "Primera sesión",
-                  desc: "Es la primera vez que hablaré con este psicólogo. Quiero comenzar un proceso terapéutico.",
-                  badge: "Evaluación inicial",
-                  badgeColor: "teal",
-                },
-                {
-                  key: "seguimiento" as SessionType,
-                  icon: RotateCcw,
-                  title: "Sesión de seguimiento",
-                  desc: "Ya he tenido sesiones anteriores y quiero continuar mi proceso terapéutico.",
-                  badge: "Continuación",
-                  badgeColor: "sage",
-                },
+                { key: "primera" as SessionType, icon: UserPlus, title: "Primera sesión", desc: "Es la primera vez que hablaré con este psicólogo.", badge: "Evaluación inicial", badgeColor: "teal" },
+                { key: "seguimiento" as SessionType, icon: RotateCcw, title: "Sesión de seguimiento", desc: "Ya he tenido sesiones anteriores y quiero continuar.", badge: "Continuación", badgeColor: "sage" },
               ].map((opt) => (
                 <button
                   key={opt.key}
                   onClick={() => setSessionType(opt.key)}
                   className="p-5 rounded-2xl border-2 text-left transition-all"
-                  style={{
-                    borderColor: sessionType === opt.key ? TEAL : "rgba(26,74,92,0.15)",
-                    background: sessionType === opt.key ? FOG : "white",
-                  }}
+                  style={{ borderColor: sessionType === opt.key ? TEAL : "rgba(26,74,92,0.15)", background: sessionType === opt.key ? FOG : "white" }}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div
-                      className="w-11 h-11 rounded-xl flex items-center justify-center"
-                      style={{ background: sessionType === opt.key ? "#C8DDE8" : "#f1f5f9" }}
-                    >
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: sessionType === opt.key ? "#C8DDE8" : "#f1f5f9" }}>
                       <opt.icon size={20} style={{ color: sessionType === opt.key ? TEAL : "#94a3b8" }} />
                     </div>
                     {sessionType === opt.key && (
@@ -350,72 +313,36 @@ export default function Booking() {
                       </div>
                     )}
                   </div>
-                  <p className="mb-1.5" style={{ fontWeight: 700, fontSize: "1rem", color: sessionType === opt.key ? TEAL : "#1e293b" }}>
-                    {opt.title}
-                  </p>
-                  <p style={{ color: sessionType === opt.key ? "#2d6a8a" : "#64748b", fontSize: "0.825rem", lineHeight: 1.5 }}>
-                    {opt.desc}
-                  </p>
-                  <span
-                    className="inline-block mt-3 px-2.5 py-0.5 rounded-full"
-                    style={{
-                      background: opt.badgeColor === "teal" ? "#EAF2F5" : "#E8F5F1",
-                      color: opt.badgeColor === "teal" ? TEAL : SAGE,
-                      fontSize: "0.72rem",
-                      fontWeight: 600,
-                    }}
-                  >
+                  <p className="mb-1.5" style={{ fontWeight: 700, fontSize: "1rem", color: sessionType === opt.key ? TEAL : "#1e293b" }}>{opt.title}</p>
+                  <p style={{ color: sessionType === opt.key ? "#2d6a8a" : "#64748b", fontSize: "0.825rem", lineHeight: 1.5 }}>{opt.desc}</p>
+                  <span className="inline-block mt-3 px-2.5 py-0.5 rounded-full" style={{ background: opt.badgeColor === "teal" ? "#EAF2F5" : "#E8F5F1", color: opt.badgeColor === "teal" ? TEAL : SAGE, fontSize: "0.72rem", fontWeight: 600 }}>
                     {opt.badge}
                   </span>
                 </button>
               ))}
             </div>
-            <button
-              disabled={!sessionType}
-              onClick={() => setStep(2)}
-              className="w-full py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: TEAL, fontWeight: 700, fontSize: "0.95rem" }}
-            >
+            <button disabled={!sessionType} onClick={() => setStep(2)} className="w-full py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: TEAL, fontWeight: 700, fontSize: "0.95rem" }}>
               Continuar <ArrowRight size={18} />
             </button>
           </div>
         )}
 
-        {/* STEP 2 */}
         {step === 2 && (
           <div>
-            <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>
-              Elige la modalidad de tu sesión
-            </h2>
-            <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>
-              Cada modalidad tiene un precio diferente. Selecciona la que prefieras.
-            </p>
+            <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>Elige la modalidad de tu sesión</h2>
+            <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>Cada modalidad tiene un precio diferente.</p>
             <div className="flex flex-col gap-4 mb-8">
               {modalityOptions.map((opt) => (
-                <button
-                  key={opt.key}
-                  onClick={() => setModality(opt.key)}
-                  className="p-5 rounded-2xl border-2 text-left transition-all flex items-center gap-4"
-                  style={{
-                    borderColor: modality === opt.key ? TEAL : "rgba(26,74,92,0.15)",
-                    background: modality === opt.key ? FOG : "white",
-                  }}
-                >
+                <button key={opt.key} onClick={() => setModality(opt.key)} className="p-5 rounded-2xl border-2 text-left transition-all flex items-center gap-4" style={{ borderColor: modality === opt.key ? TEAL : "rgba(26,74,92,0.15)", background: modality === opt.key ? FOG : "white" }}>
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: opt.bg }}>
                     <opt.icon size={22} style={{ color: opt.color }} />
                   </div>
                   <div className="flex-1">
-                    <p className="mb-0.5" style={{ fontWeight: 700, fontSize: "0.95rem", color: modality === opt.key ? TEAL : "#1e293b" }}>
-                      {opt.label}
-                    </p>
-                    <p style={{ color: modality === opt.key ? "#2d6a8a" : "#64748b", fontSize: "0.825rem" }}>
-                      {opt.desc}
-                    </p>
+                    <p className="mb-0.5" style={{ fontWeight: 700, fontSize: "0.95rem", color: modality === opt.key ? TEAL : "#1e293b" }}>{opt.label}</p>
+                    <p style={{ color: modality === opt.key ? "#2d6a8a" : "#64748b", fontSize: "0.825rem" }}>{opt.desc}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p style={{ fontWeight: 800, fontSize: "1.1rem", color: modality === opt.key ? TEAL : "#1e293b" }}>
-                      ${opt.price}
-                    </p>
+                    <p style={{ fontWeight: 800, fontSize: "1.1rem", color: modality === opt.key ? TEAL : "#1e293b" }}>${opt.price}</p>
                     <p className="text-slate-400" style={{ fontSize: "0.72rem" }}>por sesión</p>
                   </div>
                   {modality === opt.key && (
@@ -427,49 +354,28 @@ export default function Booking() {
               ))}
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="px-6 py-4 border rounded-xl transition-colors"
-                style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}
-              >
+              <button onClick={() => setStep(1)} className="px-6 py-4 border rounded-xl transition-colors" style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}>
                 <ArrowLeft size={16} />
               </button>
-              <button
-                disabled={!modality}
-                onClick={() => setStep(3)}
-                className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: TEAL, fontWeight: 700, fontSize: "0.95rem" }}
-              >
+              <button disabled={!modality} onClick={() => setStep(3)} className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: TEAL, fontWeight: 700, fontSize: "0.95rem" }}>
                 Continuar <ArrowRight size={18} />
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 3 */}
         {step === 3 && (
           <div>
             <div className="flex items-start justify-between mb-7">
               <div>
-                <h2 className="text-slate-900 mb-1" style={{ fontWeight: 800, fontSize: "1.4rem" }}>
-                  Selecciona fecha y hora
-                </h2>
-                <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>
-                  Los horarios disponibles se actualizan en tiempo real.
-                </p>
+                <h2 className="text-slate-900 mb-1" style={{ fontWeight: 800, fontSize: "1.4rem" }}>Selecciona fecha y hora</h2>
+                <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>Los horarios disponibles se actualizan en tiempo real.</p>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: "#E8F5F1" }}>
-                {isUpdating ? (
-                  <RefreshCw size={12} style={{ color: SAGE }} className="animate-spin" />
-                ) : (
-                  <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: SAGE }} />
-                )}
-                <span style={{ color: SAGE, fontSize: "0.72rem", fontWeight: 600 }}>
-                  {isUpdating ? "Actualizando..." : "En vivo"}
-                </span>
+                {isUpdating ? <RefreshCw size={12} style={{ color: SAGE }} className="animate-spin" /> : <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: SAGE }} />}
+                <span style={{ color: SAGE, fontSize: "0.72rem", fontWeight: 600 }}>{isUpdating ? "Actualizando..." : "En vivo"}</span>
               </div>
             </div>
-
             <div className="mb-6">
               <p className="text-slate-700 mb-3" style={{ fontWeight: 600, fontSize: "0.875rem" }}>
                 <Calendar size={14} className="inline mr-1.5" style={{ color: TEAL }} />
@@ -482,121 +388,65 @@ export default function Booking() {
                   const availableCount = slots.filter((s) => s.available).length;
                   const isSelected = selectedDate?.toDateString() === date.toDateString();
                   return (
-                    <button
-                      key={date.toISOString()}
-                      onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
-                      className="flex-shrink-0 w-16 py-3 rounded-xl border-2 text-center transition-all"
-                      style={{
-                        borderColor: isSelected ? TEAL : "rgba(26,74,92,0.2)",
-                        background: isSelected ? TEAL : "white",
-                      }}
-                    >
-                      <p className="capitalize" style={{ color: isSelected ? `${MINT}CC` : "#94a3b8", fontSize: "0.7rem", fontWeight: 600 }}>
-                        {dayNames[dayKey]?.slice(0, 3) || ""}
-                      </p>
-                      <p style={{ color: isSelected ? "white" : "#1e293b", fontWeight: 800, fontSize: "1.1rem" }}>
-                        {date.getDate()}
-                      </p>
-                      <p style={{ color: isSelected ? MINT : availableCount > 0 ? SAGE : "#94a3b8", fontSize: "0.65rem" }}>
-                        {availableCount > 0 ? `${availableCount} libre${availableCount > 1 ? "s" : ""}` : "lleno"}
-                      </p>
+                    <button key={date.toISOString()} onClick={() => { setSelectedDate(date); setSelectedTime(null); }} className="flex-shrink-0 w-16 py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: isSelected ? TEAL : "rgba(26,74,92,0.2)", background: isSelected ? TEAL : "white" }}>
+                      <p className="capitalize" style={{ color: isSelected ? `${MINT}CC` : "#94a3b8", fontSize: "0.7rem", fontWeight: 600 }}>{dayNames[dayKey]?.slice(0, 3) || ""}</p>
+                      <p style={{ color: isSelected ? "white" : "#1e293b", fontWeight: 800, fontSize: "1.1rem" }}>{date.getDate()}</p>
+                      <p style={{ color: isSelected ? MINT : availableCount > 0 ? SAGE : "#94a3b8", fontSize: "0.65rem" }}>{availableCount > 0 ? `${availableCount} libre${availableCount > 1 ? "s" : ""}` : "lleno"}</p>
                     </button>
                   );
                 })}
               </div>
             </div>
-
             {selectedDate && (
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-slate-700" style={{ fontWeight: 600, fontSize: "0.875rem" }}>
                     <Clock size={14} className="inline mr-1.5" style={{ color: TEAL }} />
-                    Horarios disponibles · {formatDate(selectedDate)}
+                    Horarios · {formatDate(selectedDate)}
                   </p>
-                  <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>
-                    Actualizado {lastUpdated.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                  </p>
+                  <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>Actualizado {lastUpdated.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</p>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                   {getDaySlots(selectedDate).map(({ time, available }) => (
-                    <button
-                      key={time}
-                      disabled={!available}
-                      onClick={() => setSelectedTime(time)}
-                      className="py-3 rounded-xl border-2 text-center transition-all"
-                      style={{
-                        borderColor: !available ? "rgba(26,74,92,0.06)" : selectedTime === time ? TEAL : "rgba(26,74,92,0.18)",
-                        background: !available ? "#f8fafc" : selectedTime === time ? TEAL : "white",
-                        color: !available ? "#cbd5e1" : selectedTime === time ? "white" : "#334155",
-                        cursor: !available ? "not-allowed" : "pointer",
-                        fontWeight: selectedTime === time ? 700 : 500,
-                        fontSize: "0.875rem",
-                      }}
-                    >
+                    <button key={time} disabled={!available} onClick={() => setSelectedTime(time)} className="py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: !available ? "rgba(26,74,92,0.06)" : selectedTime === time ? TEAL : "rgba(26,74,92,0.18)", background: !available ? "#f8fafc" : selectedTime === time ? TEAL : "white", color: !available ? "#cbd5e1" : selectedTime === time ? "white" : "#334155", cursor: !available ? "not-allowed" : "pointer", fontWeight: selectedTime === time ? 700 : 500, fontSize: "0.875rem" }}>
                       {time}
-                      {!available && (
-                        <span className="block text-slate-300" style={{ fontSize: "0.65rem" }}>Ocupado</span>
-                      )}
+                      {!available && <span className="block text-slate-300" style={{ fontSize: "0.65rem" }}>Ocupado</span>}
                     </button>
                   ))}
                 </div>
               </div>
             )}
-
             {!selectedDate && (
               <div className="text-center py-10 bg-white rounded-2xl border border-dashed mb-6" style={{ borderColor: "rgba(26,74,92,0.2)" }}>
                 <Calendar size={28} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-slate-400" style={{ fontSize: "0.875rem" }}>
-                  Selecciona una fecha para ver los horarios disponibles
-                </p>
+                <p className="text-slate-400" style={{ fontSize: "0.875rem" }}>Selecciona una fecha para ver los horarios disponibles</p>
               </div>
             )}
-
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(2)}
-                className="px-6 py-4 border rounded-xl transition-colors"
-                style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}
-              >
+              <button onClick={() => setStep(2)} className="px-6 py-4 border rounded-xl transition-colors" style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}>
                 <ArrowLeft size={16} />
               </button>
-              <button
-                disabled={!selectedDate || !selectedTime}
-                onClick={() => setStep(4)}
-                className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: TEAL, fontWeight: 700, fontSize: "0.95rem" }}
-              >
+              <button disabled={!selectedDate || !selectedTime} onClick={() => setStep(4)} className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: TEAL, fontWeight: 700, fontSize: "0.95rem" }}>
                 Continuar <ArrowRight size={18} />
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 4 */}
         {step === 4 && (
           <div>
-            <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>
-              Resumen de tu reserva
-            </h2>
-            <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>
-              Revisa los detalles antes de confirmar tu cita.
-            </p>
-
+            <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>Resumen de tu reserva</h2>
+            <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>Revisa los detalles antes de confirmar tu cita.</p>
             <div className="bg-white rounded-2xl p-5 border shadow-sm mb-4" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
               <div className="flex items-center gap-4">
                 <img src={psychologist.photo} alt="" className="w-16 h-16 rounded-xl object-cover" />
                 <div>
-                  <p className="text-slate-900" style={{ fontWeight: 700, fontSize: "1rem" }}>
-                    {psychologist.title} {psychologist.name}
-                  </p>
-                  <p style={{ color: TEAL, fontSize: "0.825rem" }}>
-                    {psychologist.specialties.join(" · ")}
-                  </p>
+                  <p className="text-slate-900" style={{ fontWeight: 700, fontSize: "1rem" }}>{psychologist.title} {psychologist.name}</p>
+                  <p style={{ color: TEAL, fontSize: "0.825rem" }}>{psychologist.specialties.join(" · ")}</p>
                   <StarRating rating={psychologist.rating} reviewCount={psychologist.reviewCount} size={12} />
                 </div>
               </div>
             </div>
-
             <div className="bg-white rounded-2xl p-5 border shadow-sm mb-4" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
               {[
                 { label: "Tipo de sesión", value: sessionType === "primera" ? "Primera sesión" : "Sesión de seguimiento" },
@@ -610,29 +460,17 @@ export default function Booking() {
                 </div>
               ))}
             </div>
-
             <div className="rounded-2xl p-5 mb-8" style={{ background: FOG }}>
               <div className="flex items-center justify-between">
                 <span className="text-slate-700" style={{ fontWeight: 600, fontSize: "1rem" }}>Total a pagar</span>
-                <span style={{ color: TEAL, fontWeight: 800, fontSize: "1.5rem" }}>
-                  ${modality ? psychologist.prices[modality] : 0} USD
-                </span>
+                <span style={{ color: TEAL, fontWeight: 800, fontSize: "1.5rem" }}>${modality ? psychologist.prices[modality] : 0} USD</span>
               </div>
             </div>
-
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(3)}
-                className="px-6 py-4 border rounded-xl transition-colors"
-                style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}
-              >
+              <button onClick={() => setStep(3)} className="px-6 py-4 border rounded-xl transition-colors" style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}>
                 <ArrowLeft size={16} />
               </button>
-              <button
-                onClick={handleConfirm}
-                className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 hover:opacity-90"
-                style={{ background: CORAL, fontWeight: 700, fontSize: "0.95rem" }}
-              >
+              <button onClick={handleConfirm} className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 hover:opacity-90" style={{ background: CORAL, fontWeight: 700, fontSize: "0.95rem" }}>
                 <Check size={18} />
                 Confirmar cita
               </button>

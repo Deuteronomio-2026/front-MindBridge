@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
-import { Brain, Calendar, User, Menu, X, ChevronDown, Bell, Settings, LogOut, Shield } from "lucide-react";
+import { Brain, Calendar, User, Menu, X, ChevronDown, Bell, LogOut } from "lucide-react";
 import { useUser } from "../hooks/useUser";
 
 const TEAL = "#1A4A5C";
-const TEAL_DARK = "#0D2E38";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
-const MINT = "#A8D5C2";
 const SAGE = "#4E8B7A";
 
 const mockNotifications = [

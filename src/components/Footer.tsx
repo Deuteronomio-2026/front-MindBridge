@@ -4,7 +4,6 @@ import { Brain, Heart, Mail, Phone, MapPin } from "lucide-react";
 const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
 const MINT = "#A8D5C2";
-const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 
 export function Footer() {
