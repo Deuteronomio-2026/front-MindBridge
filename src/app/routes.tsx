@@ -4,7 +4,7 @@ import Root from "../pages/patient/Root";
 import Home from "../pages/patient/Home";
 import Psychologists from "../pages/patient/Psychologists";
 import PsychologistDetail from "../pages/patient/PsychologistDetail";
-import Booking from "../pages/patient/booking";
+import Booking from "../pages/patient/Booking";
 import UserProfile from "../pages/UserProfile";
 import Appointments from "../pages/patient/Appointments";
 import NotFound from "../pages/patient/NotFound";
