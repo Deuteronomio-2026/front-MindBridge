@@ -16,7 +16,7 @@ const roles = [
     title: "Paciente",
     desc: "Busca psicólogos, reserva sesiones y gestiona tu bienestar mental.",
     features: ["Buscar y filtrar psicólogos", "Reservar sesiones", "Chat y videollamada integrados", "Historial de citas"],
-    path: "/",
+    path: "/paciente",
     color: TEAL,
     bg: FOG,
     accent: "#EAF2F5",
