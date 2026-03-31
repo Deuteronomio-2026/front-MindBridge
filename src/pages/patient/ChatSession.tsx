@@ -84,7 +84,6 @@ export default function ChatSession() {
   const [cameraOn, setCameraOn] = useState(true);
   const [sessionTime, setSessionTime] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionActive, setSessionActive] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const replyIndexRef = useRef(0);
 
