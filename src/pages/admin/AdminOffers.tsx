@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Tag, CheckCircle, XCircle, Calendar, User, Sparkles, AlertCircle } from "lucide-react";
-import { offerService} from "../../service/offerService";
+import { AxiosError } from "axios";
+import { offerService } from "../../service/offerService";
 import type { Offer } from "../../service/offerService";
 
 const TEAL = "#1A4A5C";
@@ -25,7 +26,14 @@ export default function AdminOffers() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Cargar datos al montar el componente
+  // Función auxiliar para extraer mensaje de error
+  const getErrorMessage = (err: unknown): string => {
+    if (err instanceof AxiosError) {
+      return err.response?.data?.message || err.message;
+    }
+    return "Ocurrió un error inesperado";
+  };
+
   useEffect(() => {
     loadOffers();
   }, []);
@@ -40,9 +48,9 @@ export default function AdminOffers() {
       ]);
       setOpenOffers(active);
       setTakenOffers(taken);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error cargando ofertas:", err);
-      setError(err.response?.data?.message || "Error al cargar las ofertas");
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -50,9 +58,9 @@ export default function AdminOffers() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Validaciones básicas
     if (!title || !description || !startDate || !endDate) {
       setError("Todos los campos marcados con * son obligatorios");
+      setTimeout(() => setError(null), 5000);
       return;
     }
 
@@ -83,25 +91,23 @@ export default function AdminOffers() {
       setDiscountPercent(15);
       setStartDate("");
       setEndDate("");
-      // Recargar listas
       await loadOffers();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error creando oferta:", err);
-      setError(err.response?.data?.message || "Error al crear la oferta");
+      setError(getErrorMessage(err));
       setTimeout(() => setError(null), 5000);
     }
   };
 
   const handleCancel = async (id: string) => {
     try {
-      // Llamada al endpoint de cancelar (PATCH /api/offers/{id}/cancel)
-      await offerService.cancelOffer(id);  // Asegúrate de tener este método en offerService
-      await loadOffers();  // Recargar listas
+      await offerService.cancelOffer(id);
+      await loadOffers();
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error cancelando oferta:", err);
-      setError(err.response?.data?.message || "Error al cancelar la oferta");
+      setError(getErrorMessage(err));
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -135,11 +141,10 @@ export default function AdminOffers() {
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-        {/* Mensaje de éxito o error */}
         {success && (
           <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: "#E8F5F1", color: SAGE }}>
             <CheckCircle size={16} />
-            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Oferta publicada exitosamente</span>
+            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Operación realizada exitosamente</span>
           </div>
         )}
         {error && (
@@ -149,7 +154,7 @@ export default function AdminOffers() {
           </div>
         )}
 
-        {/* ── Form ── */}
+        {/* Formulario */}
         <div className="bg-white rounded-2xl shadow-sm border p-6" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
           <div className="flex items-center gap-2 mb-5">
             <Plus size={18} style={{ color: TEAL }} />
@@ -293,7 +298,7 @@ export default function AdminOffers() {
           </form>
         </div>
 
-        {/* ── Abiertas ── */}
+        {/* Ofertas abiertas */}
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
           <div className="flex items-center gap-2 px-6 py-4 border-b" style={{ borderColor: "rgba(26,74,92,0.06)" }}>
             <Tag size={17} style={{ color: TEAL }} />
@@ -343,7 +348,7 @@ export default function AdminOffers() {
           )}
         </div>
 
-        {/* ── Tomadas ── */}
+        {/* Ofertas tomadas */}
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
           <div className="flex items-center gap-2 px-6 py-4 border-b" style={{ borderColor: "rgba(26,74,92,0.06)" }}>
             <CheckCircle size={17} style={{ color: SAGE }} />
