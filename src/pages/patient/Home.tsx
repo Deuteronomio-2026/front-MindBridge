@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { Search, Star, Sparkles, ChevronRight, Clock, Video, Users, MessageCircle } from "lucide-react";
+import { Search, Sparkles, Video, Users, MessageCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { psychologists, specialtyOptions } from "../../data/psychologists";
 import { PsychologistCard } from "../../components/PsychologistCard";
@@ -15,11 +15,11 @@ const MINT = "#A8D5C2";
 
 const QUICK_SPECIALTIES = specialtyOptions.slice(0, 8);
 
-const modalityIcon = {
-  video: Video,
-  presencial: Users,
-  chat: MessageCircle,
-};
+//const modalityIcon = {
+  //video: Video,
+  //presencial: Users,
+  //chat: MessageCircle,
+//};
 
 export default function Home() {
   const navigate = useNavigate();
