@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Sparkles, TrendingUp, Star, Users, CheckCircle,
   Clock, ChevronLeft, Lock, Zap, BadgeDollarSign,
 } from "lucide-react";
+import { offerService } from "../../service/offerService";
+import type { Offer as ApiOffer } from "../../service/offerService";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -11,7 +13,8 @@ const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
 
-// ── Tipo unificado (mover a src/types/offer.ts cuando conectes la API) ──
+const PSYCHOLOGIST_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa7";
+
 type OfferStatus = "available" | "subscribed" | "taken";
 
 interface Offer {
@@ -20,45 +23,12 @@ interface Offer {
   description: string;
   benefits: string[];
   boostMultiplier: number;
-  discountPercent: number; // % que cede el psicólogo → va al paciente
+  discountPercent: number;
   spotsTotal: number;
   spotsTaken: number;
   expiresAt: string;
   status: OfferStatus;
 }
-
-const mockOffers: Offer[] = [
-  {
-    id: "off-1",
-    title: "Oferta Abril 2026",
-    description:
-      "El administrador de MindBridge ha creado una oferta exclusiva. El primer psicólogo en suscribirse aparecerá destacado en el listado de pacientes durante todo abril con visibilidad 3×. A cambio, cede un 20% de cada sesión durante el periodo — ese descuento lo reciben los pacientes que te reserven.",
-    benefits: [
-      "Apareces primero en el listado de búsqueda",
-      "Insignia 'Destacado' visible en tu perfil",
-      "3× más impresiones durante abril",
-      "Notificación push a pacientes que vieron tu perfil",
-    ],
-    boostMultiplier: 3,
-    discountPercent: 20,
-    spotsTotal: 1,
-    spotsTaken: 0,
-    expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "available",
-  },
-  {
-    id: "off-2",
-    title: "Oferta Marzo 2026",
-    description: "Oferta del mes de marzo ya cerrada.",
-    benefits: ["Posición destacada en listado", "2× más impresiones"],
-    boostMultiplier: 2,
-    discountPercent: 20,
-    spotsTotal: 1,
-    spotsTaken: 1,
-    expiresAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "taken",
-  },
-];
 
 const statusMeta: Record<OfferStatus, { label: string; color: string; bg: string }> = {
   available: { label: "Disponible", color: SAGE, bg: "#E8F5F1" },
@@ -74,11 +44,49 @@ function timeLeft(isoDate: string): string {
   return `${Math.floor(hours / 24)}d restantes`;
 }
 
+function mapApiToOffer(api: ApiOffer): Offer {
+  const isTaken = api.status === "TAKEN";
+  const isSubscribed = api.psychologistId === PSYCHOLOGIST_ID;
+  return {
+    id: api.id,
+    title: api.title,
+    description: api.description,
+    benefits: api.benefits,
+    boostMultiplier: api.boostMultiplier,
+    discountPercent: api.discountPercent,
+    spotsTotal: 1,
+    spotsTaken: isTaken ? 1 : 0,
+    expiresAt: api.endDate,
+    status: isSubscribed ? "subscribed" : isTaken ? "taken" : "available",
+  };
+}
+
 export default function PsychOffers() {
   const navigate = useNavigate();
-  const [offers, setOffers] = useState<Offer[]>(mockOffers);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchOffers = async () => {
+      try {
+        setLoading(true);
+        const [active, taken] = await Promise.all([
+          offerService.getActiveOffers(),
+          offerService.getTakenOffers(),
+        ]);
+        const all = [...active, ...taken].map(mapApiToOffer);
+        setOffers(all);
+      } catch {
+        setError("No se pudieron cargar las ofertas. Verifica tu conexión.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOffers();
+  }, []);
 
   const activeOffer = offers.find((o) => o.status === "available");
   const pastOffers = offers.filter((o) => o.status === "taken" || o.status === "subscribed");
@@ -86,17 +94,40 @@ export default function PsychOffers() {
 
   const handleSubscribe = async (offerId: string) => {
     setSubscribing(offerId);
-    await new Promise((r) => setTimeout(r, 1400));
-    setOffers((prev) =>
-      prev.map((o) => o.id === offerId ? { ...o, status: "subscribed", spotsTaken: 1 } : o)
-    );
-    setSubscribing(null);
-    setConfirming(null);
+    try {
+      await offerService.subscribeOffer(offerId, PSYCHOLOGIST_ID);
+      setOffers((prev) =>
+        prev.map((o) => o.id === offerId ? { ...o, status: "subscribed", spotsTaken: 1 } : o)
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("409") || message.includes("conflict")) {
+        setError("Alguien más se suscribió primero. La oferta ya no está disponible.");
+        setOffers((prev) =>
+          prev.map((o) => o.id === offerId ? { ...o, status: "taken", spotsTaken: 1 } : o)
+        );
+      } else {
+        setError("Error al suscribirse. Intenta de nuevo.");
+      }
+    } finally {
+      setSubscribing(null);
+      setConfirming(null);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-4" style={{ borderColor: TEAL, borderTopColor: "transparent" }} />
+          <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>Cargando ofertas...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ background: FOG }}>
-      {/* Header */}
       <div style={{ background: `linear-gradient(135deg, #0D2E38 0%, ${TEAL} 100%)` }} className="py-10 px-6">
         <div className="max-w-4xl mx-auto">
           <button onClick={() => navigate("/panel-psicologo")}
@@ -120,7 +151,13 @@ export default function PsychOffers() {
 
       <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-6">
 
-        {/* Suscrito — banner de éxito */}
+        {error && (
+          <div className="rounded-xl px-4 py-3 border" style={{ background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C", fontSize: "0.875rem" }}>
+            {error}
+            <button onClick={() => setError(null)} className="ml-3 underline" style={{ fontSize: "0.8rem" }}>Cerrar</button>
+          </div>
+        )}
+
         {isSubscribed && (
           <div className="rounded-2xl p-5 flex items-center gap-4 border" style={{ background: "#E8F5F1", borderColor: "#A7D4C5" }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: SAGE }}>
@@ -135,7 +172,6 @@ export default function PsychOffers() {
           </div>
         )}
 
-        {/* Oferta activa */}
         {activeOffer ? (
           <div>
             <p className="text-slate-500 mb-3" style={{ fontSize: "0.8rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -144,8 +180,6 @@ export default function PsychOffers() {
             <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
               <div style={{ height: 4, background: "linear-gradient(90deg, #F59E0B 0%, #F97316 100%)" }} />
               <div className="p-6">
-
-                {/* Badges + título */}
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -167,10 +201,9 @@ export default function PsychOffers() {
                   {activeOffer.description}
                 </p>
 
-                {/* Lo que ganas / lo que cedes */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                   <div className="rounded-xl p-4" style={{ background: "#E8F5F1" }}>
-                    <p className="mb-2" style={{ color: SAGE, fontWeight: 700, fontSize: "0.82rem" }}>✅ Lo que ganas</p>
+                    <p className="mb-2" style={{ color: SAGE, fontWeight: 700, fontSize: "0.82rem" }}>Lo que ganas</p>
                     <div className="flex flex-col gap-1.5">
                       {activeOffer.benefits.map((b, i) => (
                         <div key={i} className="flex items-start gap-2">
@@ -181,18 +214,17 @@ export default function PsychOffers() {
                     </div>
                   </div>
                   <div className="rounded-xl p-4" style={{ background: "#FFF7ED" }}>
-                    <p className="mb-2" style={{ color: "#B45309", fontWeight: 700, fontSize: "0.82rem" }}>📋 Lo que cedes</p>
+                    <p className="mb-2" style={{ color: "#B45309", fontWeight: 700, fontSize: "0.82rem" }}>Lo que cedes</p>
                     <div className="flex items-center gap-2 mb-2">
                       <BadgeDollarSign size={22} style={{ color: CORAL, flexShrink: 0 }} />
                       <p style={{ color: "#92400E", fontWeight: 800, fontSize: "1.4rem" }}>{activeOffer.discountPercent}%</p>
                     </div>
                     <p style={{ color: "#92400E", fontSize: "0.8rem", lineHeight: 1.5 }}>
-                      De cada sesión durante el periodo. Ese {activeOffer.discountPercent}% se descuenta al paciente como incentivo para reservarte.
+                      De cada sesión durante el periodo. Ese {activeOffer.discountPercent}% se descuenta al paciente como incentivo.
                     </p>
                   </div>
                 </div>
 
-                {/* Stats */}
                 <div className="grid grid-cols-3 gap-3 mb-5">
                   {[
                     { icon: Users, label: "Spots", value: `${activeOffer.spotsTaken}/${activeOffer.spotsTotal}` },
@@ -207,16 +239,13 @@ export default function PsychOffers() {
                   ))}
                 </div>
 
-                {/* Urgencia */}
-                <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-5"
-                  style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
+                <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-5" style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
                   <Zap size={15} style={{ color: CORAL, flexShrink: 0 }} />
                   <p style={{ color: "#B91C1C", fontSize: "0.82rem", fontWeight: 500 }}>
                     Solo <strong>1 spot disponible</strong>. El primer psicólogo en suscribirse obtiene el beneficio completo.
                   </p>
                 </div>
 
-                {/* CTA */}
                 {confirming === activeOffer.id ? (
                   <div className="flex flex-col gap-3">
                     <p className="text-center text-slate-600" style={{ fontSize: "0.85rem" }}>
@@ -233,7 +262,7 @@ export default function PsychOffers() {
                         className="flex-1 py-3 rounded-xl text-white flex items-center justify-center gap-2"
                         style={{ background: subscribing === activeOffer.id ? SAGE : "linear-gradient(135deg, #F59E0B, #F97316)", fontSize: "0.88rem", fontWeight: 700 }}>
                         {subscribing === activeOffer.id
-                          ? <><span className="animate-spin">⏳</span> Procesando...</>
+                          ? <><span className="animate-spin inline-block">⏳</span> Procesando...</>
                           : <><Sparkles size={16} /> Confirmar suscripción</>}
                       </button>
                     </div>
@@ -248,7 +277,7 @@ export default function PsychOffers() {
               </div>
             </div>
           </div>
-        ) : !isSubscribed ? (
+        ) : !isSubscribed && !loading && (
           <div className="bg-white rounded-2xl p-10 text-center border shadow-sm" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: FOG }}>
               <Sparkles size={24} className="text-slate-300" />
@@ -258,9 +287,8 @@ export default function PsychOffers() {
               Te notificaremos cuando el administrador publique una nueva oferta.
             </p>
           </div>
-        ) : null}
+        )}
 
-        {/* Historial */}
         {pastOffers.length > 0 && (
           <div>
             <p className="text-slate-500 mb-3" style={{ fontSize: "0.8rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -268,10 +296,8 @@ export default function PsychOffers() {
             </p>
             <div className="flex flex-col gap-3">
               {pastOffers.map((offer) => (
-                <div key={offer.id} className="bg-white rounded-2xl p-5 border flex items-center gap-4"
-                  style={{ borderColor: "rgba(26,74,92,0.08)" }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: "#F1F5F9" }}>
+                <div key={offer.id} className="bg-white rounded-2xl p-5 border flex items-center gap-4" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#F1F5F9" }}>
                     <Lock size={16} className="text-slate-400" />
                   </div>
                   <div className="flex-1 min-w-0">
