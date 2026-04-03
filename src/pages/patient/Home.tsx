@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { Search, Sparkles, Video, Users, MessageCircle } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
 import { psychologists, specialtyOptions } from "../../data/psychologists";
 import { PsychologistCard } from "../../components/PsychologistCard";
@@ -14,12 +14,6 @@ const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
 
 const QUICK_SPECIALTIES = specialtyOptions.slice(0, 8);
-
-//const modalityIcon = {
-  //video: Video,
-  //presencial: Users,
-  //chat: MessageCircle,
-//};
 
 export default function Home() {
   const navigate = useNavigate();
@@ -107,8 +101,6 @@ export default function Home() {
           </p>
 
           <form onSubmit={handleSearch} className="flex gap-2 max-w-xl mx-auto mb-6">
-
-            {/* 🔥 INPUT MEJORADO */}
             <div
               className="flex-1 flex items-center gap-3 rounded-xl px-4 shadow-md"
               style={{ background: "white" }}
@@ -151,7 +143,6 @@ export default function Home() {
       {/* ── BANNER DE OFERTA ── */}
       <section className="max-w-4xl mx-auto px-6 pt-8">
         <div className="bg-white border rounded-2xl p-5 shadow-sm">
-
           {loadingOffer ? (
             <p className="text-slate-400 text-sm">Cargando ofertas...</p>
           ) : activeOffer ? (
@@ -177,7 +168,6 @@ export default function Home() {
               </p>
             </div>
           )}
-
         </div>
       </section>
 
