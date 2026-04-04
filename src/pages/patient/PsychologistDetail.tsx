@@ -307,8 +307,9 @@ export default function PsychologistDetail() {
                   ))}
                 </div>
 
+                {/* ✅ CORRECCIÓN AQUÍ: se agregó el prefijo "/paciente" */}
                 <button
-                  onClick={() => navigate(`/reservar/${psychologist.id}`)}
+                  onClick={() => navigate(`/paciente/reservar/${psychologist.id}`)}
                   className="w-full py-3.5 text-white rounded-xl transition-colors hover:opacity-90"
                   style={{ background: CORAL, fontWeight: 700, fontSize: "0.95rem" }}
                 >

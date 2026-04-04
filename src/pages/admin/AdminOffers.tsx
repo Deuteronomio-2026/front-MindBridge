@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, Tag, CheckCircle, XCircle, Calendar, User, Sparkles, AlertCircle } from "lucide-react";
 import { AxiosError } from "axios";
 import { offerService } from "../../service/offerService";
@@ -26,7 +26,6 @@ export default function AdminOffers() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Función auxiliar para extraer mensaje de error
   const getErrorMessage = (err: unknown): string => {
     if (err instanceof AxiosError) {
       return err.response?.data?.message || err.message;
@@ -34,11 +33,8 @@ export default function AdminOffers() {
     return "Ocurrió un error inesperado";
   };
 
-  useEffect(() => {
-    loadOffers();
-  }, []);
-
-  const loadOffers = async () => {
+  // ✅ Función de carga memoizada
+  const loadOffers = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -54,7 +50,12 @@ export default function AdminOffers() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // No depende de nada externo
+
+  // ✅ useEffect con la dependencia correcta
+  useEffect(() => {
+    loadOffers();
+  }, [loadOffers]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +84,6 @@ export default function AdminOffers() {
       await offerService.createOffer(newOfferData);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-      // Limpiar formulario
       setTitle("");
       setDescription("");
       setBenefitsRaw("");
@@ -91,7 +91,7 @@ export default function AdminOffers() {
       setDiscountPercent(15);
       setStartDate("");
       setEndDate("");
-      await loadOffers();
+      await loadOffers(); // ✅ reutiliza la función
     } catch (err: unknown) {
       console.error("Error creando oferta:", err);
       setError(getErrorMessage(err));
@@ -102,7 +102,7 @@ export default function AdminOffers() {
   const handleCancel = async (id: string) => {
     try {
       await offerService.cancelOffer(id);
-      await loadOffers();
+      await loadOffers(); // ✅ reutiliza
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: unknown) {

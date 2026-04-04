@@ -37,7 +37,7 @@ export const offerService = {
         return response.data;
     },
 
-    // ✅ Agrega este método
+    
     cancelOffer: async (offerId: string): Promise<Offer> => {
         const response = await axios.patch(`${API_BASE_URL}/offers/${offerId}/cancel`);
         return response.data;
