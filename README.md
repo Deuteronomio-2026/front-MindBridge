@@ -73,3 +73,88 @@ export default defineConfig([
   },
 ])
 ```
+---
+---
+
+## 📁 Estructura de Carpetas
+
+```bash
+project-root/
+│
+├── public/                      
+│
+├── src/
+│   │
+│   ├── app/                    
+│   │   ├── App.tsx              
+│   │   └── router.tsx           
+│   │
+│   ├── assets/                  
+│   ├── components/   
+│   │   ├── Footer.tsx
+│   │   ├── Navbar.tsx
+│   │   ├── PsychologistCard.tsx
+│   │   └── StartRating.tsx      
+│   │
+│   ├── context/    
+│   │   ├── UserProvider.tsx
+│   │   └── UserContext.tsx
+│   │
+│   ├── hooks/                   
+│   │   └── useUser.ts
+│   │
+│   ├── data/                   
+│   │   └── psychologists.ts
+│   │
+│   ├── types/                  
+│   │   └── user.ts
+│   │
+│   ├── features/ 
+|   |
+│   ├── services/                
+│   │   
+│   ├── store/                   
+│   │   
+│   │
+│   ├── styles/                  
+│   │   ├── fonts.css
+│   │   ├── index.css
+│   │   ├── tailwind.css
+|   |   └── theme.css
+|   |   
+│   │
+│   ├── pages/                  
+│   │   │
+│   │   ├── Auth.tsx
+│   │   ├── UserProfile.tsx
+│   │   │
+│   │   ├── patient/            
+│   │   │   ├── Root.tsx
+│   │   │   ├── Home.tsx
+│   │   │   ├── Psychologists.tsx
+│   │   │   ├── PsychologistDetail.tsx
+│   │   │   ├── Booking.tsx
+│   │   │   ├── Appointments.tsx
+│   │   │   ├── ChatSession.tsx
+│   │   │   └── NotFound.tsx
+│   │   │
+│   │   ├── psych/               
+│   │   │   ├── PsychHome.tsx
+│   │   │   ├── PsychSchedule.tsx
+│   │   │   ├── PsychAppointments.tsx
+│   │   │   └── PsychOffer.tsx
+│   │   │
+│   │   └── admin/              
+│   │       ├── AdminDashboard.tsx
+│   │       ├── AdminMetrics.tsx
+│   │       ├── AdminLogs.tsx
+│   │       ├── AdminUsers.tsx
+│   │       └── AdminOffers.tsx
+│   │
+│   ├── main.tsx                 
+│          
+│
+├── package.json
+├── tsconfig.json
+├── vite.config.ts 
+└── README.md
