@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
   Sparkles, TrendingUp, Star, Users, CheckCircle,
@@ -6,14 +6,13 @@ import {
 } from "lucide-react";
 import { offerService } from "../../service/offerService";
 import type { Offer as ApiOffer } from "../../service/offerService";
+import { useRealUser } from "../../hooks/useRealUser";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
-
-const PSYCHOLOGIST_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa7";
 
 type OfferStatus = "available" | "subscribed" | "taken";
 
@@ -44,9 +43,9 @@ function timeLeft(isoDate: string): string {
   return `${Math.floor(hours / 24)}d restantes`;
 }
 
-function mapApiToOffer(api: ApiOffer): Offer {
+function mapApiToOffer(api: ApiOffer, currentPsychologistId: string): Offer {
   const isTaken = api.status === "TAKEN";
-  const isSubscribed = api.psychologistId === PSYCHOLOGIST_ID;
+  const isSubscribed = api.psychologistId === currentPsychologistId;
   return {
     id: api.id,
     title: api.title,
@@ -63,49 +62,69 @@ function mapApiToOffer(api: ApiOffer): Offer {
 
 export default function PsychOffers() {
   const navigate = useNavigate();
+  const { profile, loading: profileLoading } = useRealUser();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [showSubscriptionBanner, setShowSubscriptionBanner] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const psychologistId = profile?.id;
 
   useEffect(() => {
-    const fetchOffers = async () => {
-      try {
-        setLoading(true);
-        const [active, taken] = await Promise.all([
-          offerService.getActiveOffers(),
-          offerService.getTakenOffers(),
-        ]);
-        const all = [...active, ...taken].map(mapApiToOffer);
-        setOffers(all);
-      } catch {
-        setError("No se pudieron cargar las ofertas. Verifica tu conexión.");
-      } finally {
-        setLoading(false);
-      }
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-    fetchOffers();
   }, []);
+
+  const loadOffers = useCallback(async () => {
+    if (!psychologistId) return;
+    try {
+      setLoading(true);
+      const [active, taken] = await Promise.all([
+        offerService.getActiveOffers(),
+        offerService.getTakenOffers(),
+      ]);
+      const all = [...active, ...taken].map(offer => mapApiToOffer(offer, psychologistId));
+      setOffers(all);
+      setError(null);
+    } catch (err) {
+      console.error("Error al cargar ofertas:", err);
+      setError("No se pudieron cargar las ofertas. Verifica tu conexión.");
+    } finally {
+      setLoading(false);
+    }
+  }, [psychologistId]);
+
+  useEffect(() => {
+    loadOffers();
+  }, [loadOffers]);
 
   const activeOffer = offers.find((o) => o.status === "available");
   const pastOffers = offers.filter((o) => o.status === "taken" || o.status === "subscribed");
   const isSubscribed = offers.some((o) => o.status === "subscribed");
 
   const handleSubscribe = async (offerId: string) => {
+    if (!psychologistId) {
+      setError("No se pudo identificar al psicólogo");
+      return;
+    }
     setSubscribing(offerId);
     try {
-      await offerService.subscribeOffer(offerId, PSYCHOLOGIST_ID);
-      setOffers((prev) =>
-        prev.map((o) => o.id === offerId ? { ...o, status: "subscribed", spotsTaken: 1 } : o)
-      );
+      await offerService.subscribeOffer(offerId, psychologistId);
+      await loadOffers();
+      setShowSubscriptionBanner(true);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setShowSubscriptionBanner(false), 5000);
+      setError(null);
     } catch (err: unknown) {
+      console.error("Error en suscripción:", err);
       const message = err instanceof Error ? err.message : "";
       if (message.includes("409") || message.includes("conflict")) {
         setError("Alguien más se suscribió primero. La oferta ya no está disponible.");
-        setOffers((prev) =>
-          prev.map((o) => o.id === offerId ? { ...o, status: "taken", spotsTaken: 1 } : o)
-        );
+        await loadOffers();
       } else {
         setError("Error al suscribirse. Intenta de nuevo.");
       }
@@ -115,19 +134,30 @@ export default function PsychOffers() {
     }
   };
 
-  if (loading) {
+  if (profileLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-4" style={{ borderColor: TEAL, borderTopColor: "transparent" }} />
-          <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>Cargando ofertas...</p>
+          <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>
+            {profileLoading ? "Cargando perfil..." : "Cargando ofertas..."}
+          </p>
         </div>
+      </div>
+    );
+  }
+
+  if (!psychologistId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <p className="text-slate-500">No se pudo identificar al psicólogo. Inicia sesión nuevamente.</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen" style={{ background: FOG }}>
+      {/* Header */}
       <div style={{ background: `linear-gradient(135deg, #0D2E38 0%, ${TEAL} 100%)` }} className="py-10 px-6">
         <div className="max-w-4xl mx-auto">
           <button onClick={() => navigate("/panel-psicologo")}
@@ -150,7 +180,6 @@ export default function PsychOffers() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-6">
-
         {error && (
           <div className="rounded-xl px-4 py-3 border" style={{ background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C", fontSize: "0.875rem" }}>
             {error}
@@ -158,7 +187,7 @@ export default function PsychOffers() {
           </div>
         )}
 
-        {isSubscribed && (
+        {showSubscriptionBanner && (
           <div className="rounded-2xl p-5 flex items-center gap-4 border" style={{ background: "#E8F5F1", borderColor: "#A7D4C5" }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: SAGE }}>
               <Star size={18} className="text-white" />

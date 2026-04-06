@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { Check, Clock, Save} from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Check, Clock, Save, AlertCircle, Video, User, MessageSquare } from "lucide-react";
+import { userService, type PsychologistSchedule, type PsychScheduleDay, type PsychScheduleSlot, type Modality } from "../../service/userService";
+import type { Patient, Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -15,7 +17,7 @@ const daysOfWeek = [
   { key: "friday", label: "Viernes", short: "Vie" },
   { key: "saturday", label: "Sábado", short: "Sáb" },
   { key: "sunday", label: "Domingo", short: "Dom" },
-];
+];  
 
 const timeSlots = Array.from({ length: 22 }, (_, i) => {
   const hour = Math.floor(i / 2) + 7;
@@ -23,19 +25,36 @@ const timeSlots = Array.from({ length: 22 }, (_, i) => {
   return `${hour.toString().padStart(2, "0")}:${min}`;
 });
 
+type SlotWithModality = {
+  time: string;
+  modality: "VideoConferencia" | "Presencial" | "Chat";
+};
+
 type DaySchedule = {
   enabled: boolean;
-  slots: string[];
+  slots: SlotWithModality[];
   breakStart: string;
   breakEnd: string;
 };
 
 const defaultSchedule: Record<string, DaySchedule> = {
-  monday: { enabled: true, slots: ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"], breakStart: "13:00", breakEnd: "14:00" },
-  tuesday: { enabled: true, slots: ["09:00", "10:00", "11:00", "12:00"], breakStart: "12:00", breakEnd: "14:00" },
-  wednesday: { enabled: true, slots: ["09:00", "10:00", "14:00", "15:00", "16:00", "17:00"], breakStart: "12:00", breakEnd: "14:00" },
-  thursday: { enabled: true, slots: ["09:00", "10:00", "11:00", "12:00", "14:00"], breakStart: "12:00", breakEnd: "14:00" },
-  friday: { enabled: true, slots: ["09:00", "10:00", "11:00"], breakStart: "12:00", breakEnd: "14:00" },
+  monday: {
+    enabled: true,
+    slots: [
+      { time: "09:00", modality: "VideoConferencia" },
+      { time: "10:00", modality: "Presencial" },
+      { time: "11:00", modality: "Chat" },
+      { time: "14:00", modality: "VideoConferencia" },
+      { time: "15:00", modality: "Presencial" },
+      { time: "16:00", modality: "Chat" },
+    ],
+    breakStart: "13:00",
+    breakEnd: "14:00",
+  },
+  tuesday: { enabled: true, slots: [{ time: "09:00", modality: "VideoConferencia" }, { time: "10:00", modality: "Presencial" }, { time: "11:00", modality: "Chat" }, { time: "12:00", modality: "VideoConferencia" }], breakStart: "12:00", breakEnd: "14:00" },
+  wednesday: { enabled: true, slots: [{ time: "09:00", modality: "VideoConferencia" }, { time: "10:00", modality: "Presencial" }, { time: "14:00", modality: "Chat" }, { time: "15:00", modality: "VideoConferencia" }, { time: "16:00", modality: "Presencial" }, { time: "17:00", modality: "Chat" }], breakStart: "12:00", breakEnd: "14:00" },
+  thursday: { enabled: true, slots: [{ time: "09:00", modality: "VideoConferencia" }, { time: "10:00", modality: "Presencial" }, { time: "11:00", modality: "Chat" }, { time: "12:00", modality: "VideoConferencia" }, { time: "14:00", modality: "Presencial" }], breakStart: "12:00", breakEnd: "14:00" },
+  friday: { enabled: true, slots: [{ time: "09:00", modality: "VideoConferencia" }, { time: "10:00", modality: "Presencial" }, { time: "11:00", modality: "Chat" }], breakStart: "12:00", breakEnd: "14:00" },
   saturday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
   sunday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
 };
@@ -46,6 +65,89 @@ export default function PsychSchedule() {
   const [saved, setSaved] = useState(false);
   const [sessionDuration, setSessionDuration] = useState(60);
   const [maxPerDay, setMaxPerDay] = useState(6);
+  const [psychologistId, setPsychologistId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [timeZone] = useState("America/Bogota");
+  const [selectedModality, setSelectedModality] = useState<Modality>("VideoConferencia");
+
+  const dayOfWeekToKey = (dayOfWeek: string): string => {
+    const map: Record<string, string> = {
+      LUNES: "monday",
+      MARTES: "tuesday",
+      MIERCOLES: "wednesday",
+      JUEVES: "thursday",
+      VIERNES: "friday",
+      SABADO: "saturday",
+      DOMINGO: "sunday",
+    };
+    return map[dayOfWeek] || dayOfWeek.toLowerCase();
+  };
+
+  // Load psychologist profile on mount
+  const loadScheduleFromApi = useCallback((apiSchedule: PsychologistSchedule) => {
+    const newSchedule: Record<string, DaySchedule> = {
+      monday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+      tuesday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+      wednesday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+      thursday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+      friday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+      saturday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+      sunday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
+    };
+
+    if (apiSchedule.days && Array.isArray(apiSchedule.days)) {
+      apiSchedule.days.forEach((day: PsychScheduleDay) => {
+        const dayKey = dayOfWeekToKey(day.dayOfWeek);
+        newSchedule[dayKey] = {
+          enabled: day.enabled,
+          slots: day.slots.map((s: PsychScheduleSlot) => ({
+            time: s.time,
+            modality: s.modality,
+          })),
+          breakStart: day.breakStart ?? "12:00",
+          breakEnd: day.breakEnd ?? "14:00",
+        };
+      });
+    }
+
+    setSessionDuration(apiSchedule.sessionDurationMinutes ?? 60);
+    setSchedule(newSchedule);
+  }, []);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await userService.getMyProfile();
+        const typedProfile = profile as (Patient | Psychologist) & { id?: string };
+        if (typedProfile.id) {
+          setPsychologistId(typedProfile.id);
+          try {
+            const scheduleData = await userService.getPsychologistSchedule(typedProfile.id);
+            loadScheduleFromApi(scheduleData);
+          } catch {
+            console.log("No hay agenda guardada, usando valores por defecto");
+          }
+        }
+      } catch {
+        console.error("Error loading psychologist profile");
+      }
+    };
+    loadProfile();
+  }, [loadScheduleFromApi]);
+
+  const getModalityIcon = (modality: string) => {
+    switch (modality) {
+      case "VideoConferencia":
+        return <Video size={14} />;
+      case "Presencial":
+        return <User size={14} />;
+      case "Chat":
+        return <MessageSquare size={14} />;
+      default:
+        return <Video size={14} />;
+    }
+  };
 
   const toggleDayEnabled = (day: string) => {
     setSchedule((prev) => ({
@@ -57,16 +159,99 @@ export default function PsychSchedule() {
   const toggleSlot = (day: string, slot: string) => {
     setSchedule((prev) => {
       const dayData = prev[day];
-      const newSlots = dayData.slots.includes(slot)
-        ? dayData.slots.filter((s) => s !== slot)
-        : [...dayData.slots, slot].sort();
-      return { ...prev, [day]: { ...dayData, slots: newSlots } };
+      const existingSlot = dayData.slots.find((s) => s.time === slot);
+
+      // Validar que el slot no esté dentro del horario de descanso
+      const isInBreak = slot >= dayData.breakStart && slot < dayData.breakEnd;
+      if (isInBreak && !existingSlot) {
+        setError("No puedes agregar slots dentro del horario de descanso");
+        setTimeout(() => setError(null), 3000);
+        return prev;
+      }
+
+      if (existingSlot) {
+        // Remover slot
+        return {
+          ...prev,
+          [day]: { ...dayData, slots: dayData.slots.filter((s) => s.time !== slot) },
+        };
+      } else {
+        // Agregar slot con modalidad seleccionada
+        const newSlots = [...dayData.slots, { time: slot, modality: selectedModality }].sort(
+          (a, b) => a.time.localeCompare(b.time)
+        );
+        return { ...prev, [day]: { ...dayData, slots: newSlots } };
+      }
     });
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const updateSlotModality = (day: string, time: string, modality: "VideoConferencia" | "Presencial" | "Chat") => {
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        slots: prev[day].slots.map((s) => (s.time === time ? { ...s, modality } : s)),
+      },
+    }));
+  };
+
+  const dayKeyToDayOfWeek = (day: string): string => {
+    const map: Record<string, string> = {
+      monday: "LUNES",
+      tuesday: "MARTES",
+      wednesday: "MIERCOLES",
+      thursday: "JUEVES",
+      friday: "VIERNES",
+      saturday: "SABADO",
+      sunday: "DOMINGO",
+    };
+    return map[day] || day;
+  };
+
+  const transformScheduleToApi = (): PsychologistSchedule => {
+    const days: PsychScheduleDay[] = Object.entries(schedule)
+      .filter(([, dayData]) => dayData.enabled)
+      .map(([dayKey, dayData]) => ({
+        dayOfWeek: dayKeyToDayOfWeek(dayKey),
+        enabled: true,
+        breakStart: dayData.breakStart,
+        breakEnd: dayData.breakEnd,
+        slots: dayData.slots.map((slot): PsychScheduleSlot => ({
+          time: slot.time,
+          status: "AVAILABLE" as const,
+          modality: slot.modality,
+        })),
+      }));
+
+    return {
+      timeZone,
+      sessionDurationMinutes: sessionDuration,
+      days,
+    };
+  };
+
+  const handleSave = async () => {
+    if (!psychologistId) {
+      setError("No se pudo obtener el ID del psicólogo");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const scheduleData = transformScheduleToApi();
+      console.log("Enviando schedule:", JSON.stringify(scheduleData, null, 2));
+      await userService.updatePsychologistSchedule(psychologistId, scheduleData);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Error al guardar la agenda";
+      setError(errorMessage);
+      console.error("Error saving schedule:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const totalSlotsPerWeek = Object.values(schedule).reduce(
@@ -89,6 +274,15 @@ export default function PsychSchedule() {
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {error && (
+          <div className="mb-6 p-4 rounded-lg border border-red-300 bg-red-50 flex items-center gap-3">
+            <AlertCircle size={20} className="text-red-600" />
+            <div>
+              <p className="font-semibold text-red-900">Error</p>
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left — Day selector + settings */}
           <div className="flex flex-col gap-4">
@@ -235,6 +429,31 @@ export default function PsychSchedule() {
                 </div>
               ) : (
                 <div className="p-5">
+                  <div className="mb-4">
+                    <label className="text-slate-600 mb-2 block" style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                      Selecciona modalidad para agregar slots:
+                    </label>
+                    <div className="flex gap-3">
+                      {(["VideoConferencia", "Presencial", "Chat"] as const).map((mod) => (
+                        <button
+                          key={mod}
+                          onClick={() => setSelectedModality(mod)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors"
+                          style={{
+                            background: selectedModality === mod ? TEAL : "white",
+                            borderColor: selectedModality === mod ? TEAL : "rgba(26,74,92,0.2)",
+                            color: selectedModality === mod ? "white" : "#4a6572",
+                            fontWeight: 600,
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          {getModalityIcon(mod)}
+                          {mod}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <p className="text-slate-500 mb-4" style={{ fontSize: "0.82rem" }}>
                     Haz clic en un horario para activarlo o desactivarlo como slot disponible
                   </p>
@@ -242,34 +461,58 @@ export default function PsychSchedule() {
                   {/* Slot grid */}
                   <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 mb-6">
                     {timeSlots.map((slot) => {
-                      const isSelected = currentDay.slots.includes(slot);
+                      const slotData = currentDay.slots.find((s) => s.time === slot);
+                      const isSelected = !!slotData;
                       const isBreak = slot >= currentDay.breakStart && slot < currentDay.breakEnd;
                       return (
-                        <button
-                          key={slot}
-                          onClick={() => !isBreak && toggleSlot(selectedDay, slot)}
-                          disabled={isBreak}
-                          className="py-2 rounded-xl border text-center transition-all"
-                          style={{
-                            background: isBreak
-                              ? "#FFF7ED"
-                              : isSelected
-                              ? TEAL
-                              : "white",
-                            borderColor: isBreak
-                              ? "#FED7AA"
-                              : isSelected
-                              ? TEAL
-                              : "rgba(26,74,92,0.15)",
-                            color: isBreak ? "#F59E0B" : isSelected ? "white" : "#4a6572",
-                            fontSize: "0.78rem",
-                            fontWeight: isSelected ? 700 : 500,
-                            cursor: isBreak ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {slot}
-                          {isBreak && <span className="block" style={{ fontSize: "0.6rem" }}>Descanso</span>}
-                        </button>
+                        <div key={slot} className="relative group">
+                          <button
+                            onClick={() => !isBreak && toggleSlot(selectedDay, slot)}
+                            disabled={isBreak}
+                            className="w-full py-2 rounded-xl border text-center transition-all group-hover:shadow-md"
+                            style={{
+                              background: isBreak
+                                ? "#FFF7ED"
+                                : isSelected
+                                ? TEAL
+                                : "white",
+                              borderColor: isBreak
+                                ? "#FED7AA"
+                                : isSelected
+                                ? TEAL
+                                : "rgba(26,74,92,0.15)",
+                              color: isBreak ? "#F59E0B" : isSelected ? "white" : "#4a6572",
+                              fontSize: "0.78rem",
+                              fontWeight: isSelected ? 700 : 500,
+                              cursor: isBreak ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span>{slot}</span>
+                              {slotData && <div className="text-xs">{getModalityIcon(slotData.modality)}</div>}
+                              {isBreak && <span className="text-xs">Descanso</span>}
+                            </div>
+                          </button>
+
+                          {isSelected && !isBreak && (
+                            <div className="absolute left-0 top-full mt-2 w-32 bg-white rounded-lg shadow-lg border z-50 p-2 hidden group-hover:block" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
+                              <p className="text-xs text-slate-600 font-semibold mb-2">Cambiar modalidad:</p>
+                              <div className="flex flex-col gap-1">
+                                {(["VideoConferencia", "Presencial", "Chat"] as const).map((mod) => (
+                                  <button
+                                    key={mod}
+                                    onClick={() => updateSlotModality(selectedDay, slot, mod)}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-slate-100 transition-colors"
+                                    style={{ color: slotData?.modality === mod ? TEAL : "#4a6572" }}
+                                  >
+                                    {getModalityIcon(mod)}
+                                    {mod}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -323,15 +566,22 @@ export default function PsychSchedule() {
                 }}
                 className="px-5 py-3.5 rounded-xl border transition-colors"
                 style={{ borderColor: "rgba(26,74,92,0.2)", color: "#94a3b8", fontWeight: 600 }}
+                disabled={loading}
               >
                 Limpiar todo
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 py-3.5 rounded-xl text-white flex items-center justify-center gap-2 transition-all hover:opacity-90"
-                style={{ background: saved ? SAGE : CORAL, fontWeight: 700 }}
+                disabled={loading || !psychologistId}
+                className="flex-1 py-3.5 rounded-xl text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: saved ? SAGE : loading ? "#94a3b8" : CORAL, fontWeight: 700 }}
               >
-                {saved ? (
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Guardando...
+                  </>
+                ) : saved ? (
                   <><Check size={18} /> ¡Agenda guardada!</>
                 ) : (
                   <><Save size={18} /> Guardar cambios</>

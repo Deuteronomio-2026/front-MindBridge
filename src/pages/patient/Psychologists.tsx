@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router";
-import { Search, SlidersHorizontal, X, Star, LayoutGrid, List } from "lucide-react";
-import { psychologists, specialtyOptions} from "../../data/psychologists";
+import { Search, SlidersHorizontal, X, Star, LayoutGrid, List, Loader2 } from "lucide-react";
+import { specialtyOptions } from "../../data/psychologists";
 import { PsychologistCard } from "../../components/PsychologistCard";
+import { userService } from "../../service/userService";
+import type { Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
@@ -19,6 +21,37 @@ const ratingOptions = [
   { value: 4.0, label: "4.0+ estrellas" },
 ];
 
+const mapToCardFormat = (p: Psychologist) => {
+  const specialization = p.specialization || "General";
+  // ✅ Convertir consultationFee a número (el backend lo envía como string)
+  const fee = Number(p.consultationFee) || 0;
+
+  console.log(`Psicólogo ${p.name} - fee original:`, p.consultationFee, "convertido a:", fee);
+
+  return {
+    id: p.id,
+    name: `${p.name} ${p.lastName}`,
+    title: specialization,
+    specialties: [specialization],
+    location: p.address || p.officeLocation || "Ubicación no especificada",
+    rating: 4.5,
+    reviewCount: 0,
+    photo: "https://via.placeholder.com/120",
+    verified: p.verificationStatus === "VERIFIED",
+    experience: p.yearsOfExperience,
+    bio: p.biography || "",
+    education: [],
+    languages: p.languages ?? [],
+    prices: {
+      video: fee,
+      presencial: fee + 50,
+      chat: fee - 30,
+    },
+    schedule: {},
+    reviews: [],
+  };
+};
+
 export default function Psychologists() {
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
@@ -31,19 +64,32 @@ export default function Psychologists() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  const toggleSpecialty = (s: string) => {
-    setSelectedSpecialties((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-    );
-  };
+  const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const toggleModality = (m: string) => {
-    setSelectedModalities((prev) =>
-      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
-    );
-  };
+  useEffect(() => {
+    const fetchPsychologists = async () => {
+      try {
+        setLoading(true);
+        const data = await userService.getPsychologists();
+        console.log("Psicólogos recibidos del backend:", data);
+        setPsychologists(data);
+        setError(null);
+      } catch (err) {
+        console.error("Error cargando psicólogos:", err);
+        setError("No se pudieron cargar los psicólogos. Intenta más tarde.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPsychologists();
+  }, []);
 
-  const filteredPsychologists = psychologists.filter((p) => {
+  const mappedPsychologists = psychologists.map(mapToCardFormat);
+  console.log("Psicólogos mapeados (precios):", mappedPsychologists.map(p => p.prices));
+
+  const filteredPsychologists = mappedPsychologists.filter((p) => {
     const q = query.toLowerCase();
     const matchesQuery =
       !q ||
@@ -74,6 +120,8 @@ export default function Psychologists() {
     return matchesQuery && matchesSpecialty && matchesModality && matchesRating && matchesPrice;
   });
 
+  console.log("filteredPsychologists length:", filteredPsychologists.length);
+
   const hasActiveFilters =
     selectedSpecialties.length > 0 ||
     selectedModalities.length > 0 ||
@@ -88,9 +136,41 @@ export default function Psychologists() {
     setQuery("");
   };
 
+  const toggleSpecialty = (s: string) => {
+    setSelectedSpecialties((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
+  };
+
+  const toggleModality = (m: string) => {
+    setSelectedModalities((prev) =>
+      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <Loader2 className="animate-spin" size={32} style={{ color: TEAL }} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <div className="text-center text-red-500">
+          <p>{error}</p>
+          <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 rounded-lg text-white" style={{ background: TEAL }}>
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen" style={{ background: FOG }}>
-      {/* Header */}
       <div style={{ background: `linear-gradient(135deg, #0D2E38 0%, ${TEAL} 100%)` }} className="py-12 px-6">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-white mb-2" style={{ fontSize: "2rem", fontWeight: 800 }}>
@@ -99,7 +179,6 @@ export default function Psychologists() {
           <p className="mb-6" style={{ color: "#A8D5C2", fontSize: "1rem" }}>
             {filteredPsychologists.length} profesionales disponibles para ti
           </p>
-          {/* Search bar */}
           <div className="flex gap-3 max-w-2xl">
             <div className="flex-1 flex items-center gap-3 bg-white rounded-xl px-4 shadow-sm">
               <Search size={18} className="text-slate-400 flex-shrink-0" />
@@ -148,16 +227,12 @@ export default function Psychologists() {
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-slate-900" style={{ fontWeight: 700, fontSize: "1rem" }}>Filtros</h3>
                 {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    style={{ color: TEAL, fontSize: "0.8rem", fontWeight: 500 }}
-                  >
+                  <button onClick={clearFilters} style={{ color: TEAL, fontSize: "0.8rem", fontWeight: 500 }}>
                     Limpiar
                   </button>
                 )}
               </div>
 
-              {/* Rating */}
               <div className="mb-6">
                 <p className="text-slate-700 mb-3" style={{ fontWeight: 600, fontSize: "0.875rem" }}>Calificación</p>
                 <div className="flex flex-col gap-2">
@@ -179,7 +254,6 @@ export default function Psychologists() {
                 </div>
               </div>
 
-              {/* Modality */}
               <div className="mb-6">
                 <p className="text-slate-700 mb-3" style={{ fontWeight: 600, fontSize: "0.875rem" }}>Modalidad</p>
                 <div className="flex flex-col gap-2">
@@ -194,15 +268,9 @@ export default function Psychologists() {
                           border: selectedModalities.includes(m.value) ? `2px solid ${TEAL}` : "2px solid #cbd5e1",
                         }}
                       >
-                        {selectedModalities.includes(m.value) && (
-                          <span className="text-white" style={{ fontSize: "0.65rem" }}>✓</span>
-                        )}
+                        {selectedModalities.includes(m.value) && <span className="text-white text-xs">✓</span>}
                       </div>
-                      <span
-                        className="cursor-pointer"
-                        style={{ fontSize: "0.875rem", color: "#4a6572" }}
-                        onClick={() => toggleModality(m.value)}
-                      >
+                      <span className="cursor-pointer" style={{ fontSize: "0.875rem", color: "#4a6572" }} onClick={() => toggleModality(m.value)}>
                         {m.label}
                       </span>
                     </label>
@@ -210,7 +278,6 @@ export default function Psychologists() {
                 </div>
               </div>
 
-              {/* Price */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-slate-700" style={{ fontWeight: 600, fontSize: "0.875rem" }}>Precio máximo</p>
@@ -232,7 +299,6 @@ export default function Psychologists() {
                 </div>
               </div>
 
-              {/* Specialties */}
               <div>
                 <p className="text-slate-700 mb-3" style={{ fontWeight: 600, fontSize: "0.875rem" }}>Especialidades</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -269,9 +335,7 @@ export default function Psychologists() {
                     {hasActiveFilters && (
                       <button onClick={clearFilters} style={{ color: TEAL, fontSize: "0.875rem" }}>Limpiar</button>
                     )}
-                    <button onClick={() => setFiltersOpen(false)}>
-                      <X size={20} className="text-slate-500" />
-                    </button>
+                    <button onClick={() => setFiltersOpen(false)}><X size={20} className="text-slate-500" /></button>
                   </div>
                 </div>
                 <div className="mb-5">
@@ -327,9 +391,7 @@ export default function Psychologists() {
 
           {/* Results */}
           <div className="flex-1">
-            {/* Toolbar */}
             <div className="flex items-center justify-between mb-5">
-              {/* Active filter tags */}
               <div className="flex flex-wrap gap-2">
                 {selectedSpecialties.map((s) => (
                   <span key={s} className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: "#EAF2F5", color: TEAL, fontSize: "0.8rem", fontWeight: 500 }}>
@@ -350,7 +412,6 @@ export default function Psychologists() {
                   </span>
                 )}
               </div>
-              {/* View toggle */}
               <div className="flex items-center gap-1 p-1 bg-white rounded-xl border ml-auto" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
                 <button
                   onClick={() => setViewMode("grid")}
@@ -378,11 +439,7 @@ export default function Psychologists() {
                 <p className="text-slate-400 mb-4" style={{ fontSize: "0.875rem" }}>
                   Intenta con otros filtros o términos de búsqueda.
                 </p>
-                <button
-                  onClick={clearFilters}
-                  className="px-5 py-2.5 text-white rounded-xl"
-                  style={{ background: TEAL, fontWeight: 600 }}
-                >
+                <button onClick={clearFilters} className="px-5 py-2.5 text-white rounded-xl" style={{ background: TEAL, fontWeight: 600 }}>
                   Limpiar filtros
                 </button>
               </div>

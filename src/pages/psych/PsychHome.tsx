@@ -1,17 +1,16 @@
 import { useNavigate } from "react-router";
 import {
   Calendar, Clock, Users, TrendingUp, Video, MessageCircle,
-  ChevronRight, Star, CheckCircle, Sparkles,
+  ChevronRight, Star, CheckCircle, Sparkles, Loader2,
 } from "lucide-react";
-import { psychologists } from "../../data/psychologists";
+import { useRealUser } from "../../hooks/useRealUser";
+import type { Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
-
-const psych = psychologists[0];
 
 const todaySessions = [
   { id: "s1", patient: "Ana García", time: "09:00", modality: "video", status: "upcoming", photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100" },
@@ -34,15 +33,45 @@ const modalityMeta: Record<string, { icon: typeof Video; label: string; color: s
   presencial: { icon: Users, label: "Presencial", color: SAGE, bg: "#E8F5F1" },
 };
 
-// Mock: hay una oferta activa disponible
+// Mock: hay una oferta activa disponible (luego se conectará con offer-service)
 const hasActiveOffer = true;
 
 export default function PsychHome() {
   const navigate = useNavigate();
+  const { profile, loading, error } = useRealUser();
+  const psychologist = profile as Psychologist;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <Loader2 className="animate-spin" size={32} style={{ color: TEAL }} />
+      </div>
+    );
+  }
+
+  if (error || !psychologist) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <div className="text-center text-red-500">
+          <p>{error || "No se pudo cargar el perfil del psicólogo"}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 rounded-lg text-white"
+            style={{ background: TEAL }}
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const upcoming = todaySessions.filter((s) => s.status === "upcoming");
   const completed = todaySessions.filter((s) => s.status === "completed");
   const nextSession = upcoming[0];
+
+  const fullName = `${psychologist.name} ${psychologist.lastName || ""}`.trim();
+  const firstName = fullName.split(" ")[0];
 
   return (
     <div className="min-h-screen" style={{ background: FOG }}>
@@ -53,19 +82,20 @@ export default function PsychHome() {
             <div>
               <p style={{ color: MINT, fontSize: "0.875rem", fontWeight: 500 }}>Bienvenida de vuelta</p>
               <h1 className="text-white mt-1" style={{ fontWeight: 800, fontSize: "1.8rem" }}>
-                {psych.title} {psych.name.split(" ")[0]} 👋
+                {firstName} 👋
               </h1>
               <p style={{ color: "#A8D5C2", fontSize: "0.9rem", marginTop: 4 }}>
                 Hoy tienes <strong className="text-white">{upcoming.length} sesiones</strong> pendientes
               </p>
             </div>
-            <img src={psych.photo} alt={psych.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-white/20" />
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-white/20 text-white font-bold text-xl">
+              {firstName.charAt(0)}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
-
         {/* Offer alert banner */}
         {hasActiveOffer && (
           <div
