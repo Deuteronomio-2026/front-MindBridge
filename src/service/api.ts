@@ -3,7 +3,7 @@ import axios from 'axios';
 import { authService } from './authService';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://gateway-service.orangebay-0b927206.eastus.azurecontainerapps.io',
 });
 
 // Interceptor para añadir token a todas las peticiones
