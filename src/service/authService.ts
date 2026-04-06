@@ -15,6 +15,15 @@ export interface AuthResponse {
   institutionalId: number;
 }
 
+export interface RegisterResponse {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  state: string;
+  createdAt: string;
+}
+
 export interface RegisterRequest {
   name: string;
   lastName: string;
@@ -41,7 +50,7 @@ export const authService = {
     const response = await axios.post(`${API_BASE_URL}/user/auth/login`, credentials);
     return response.data;
   },
-  register: async (userData: RegisterRequest): Promise<any> => {
+  register: async (userData: RegisterRequest): Promise<RegisterResponse> => {
     const response = await axios.post(`${API_BASE_URL}/user/auth/register`, userData);
     return response.data;
   },

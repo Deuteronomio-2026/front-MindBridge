@@ -7,7 +7,6 @@ import {
 import { useUser } from "../../hooks/useUser";
 import { StarRating } from "../../components/StarRating";
 
-
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
@@ -20,6 +19,23 @@ type Modality = "video" | "presencial" | "chat";
 interface SlotStatus {
   time: string;
   available: boolean;
+}
+
+// Definimos el tipo para el psicólogo que espera Booking
+interface PsychologistBooking {
+  id: string;
+  name: string;
+  title: string;
+  specialties: string[];
+  location: string;
+  rating: number;
+  reviewCount: number;
+  photo: string;
+  prices: {
+    video: number;
+    presencial: number;
+    chat: number;
+  };
 }
 
 // Generar horarios de ejemplo (9:00 a 18:00, cada hora)
@@ -43,11 +59,11 @@ export default function Booking() {
   const { addAppointment } = useUser();
 
   // Obtener psicólogo desde el state (enviado desde PsychologistDetail) o por ID (fallback)
-  const psychologistFromState = location.state?.psychologist as any;
-  const [psychologist, setPsychologist] = useState<any>(psychologistFromState || null);
+  const psychologistFromState = location.state?.psychologist as PsychologistBooking | undefined;
+  const [psychologist, setPsychologist] = useState<PsychologistBooking | null>(psychologistFromState || null);
   const [loading, setLoading] = useState(!psychologistFromState);
 
-  // Si no vino por state, lo obtenemos del backend (pero para demo, podemos usar datos simulados)
+  // Si no vino por state, lo obtenemos del backend (simulación)
   useEffect(() => {
     if (!psychologistFromState && id) {
       // Simulación rápida: creamos un objeto con los datos mínimos que necesita Booking
@@ -325,6 +341,7 @@ export default function Booking() {
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-8">
+        {/* Step 1, 2, 3, 4 - sin cambios, ya que son los mismos */}
         {step === 1 && (
           <div>
             <h2 className="text-slate-900 mb-2" style={{ fontWeight: 800, fontSize: "1.4rem" }}>¿Qué tipo de sesión necesitas?</h2>

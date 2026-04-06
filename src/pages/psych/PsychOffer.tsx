@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
   Sparkles, TrendingUp, Star, Users, CheckCircle,
@@ -73,14 +73,13 @@ export default function PsychOffers() {
 
   const psychologistId = profile?.id;
 
-  // Limpiar timeout al desmontar
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
 
-  const loadOffers = async () => {
+  const loadOffers = useCallback(async () => {
     if (!psychologistId) return;
     try {
       setLoading(true);
@@ -97,11 +96,11 @@ export default function PsychOffers() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [psychologistId]);
 
   useEffect(() => {
     loadOffers();
-  }, [psychologistId]);
+  }, [loadOffers]);
 
   const activeOffer = offers.find((o) => o.status === "available");
   const pastOffers = offers.filter((o) => o.status === "taken" || o.status === "subscribed");
@@ -116,7 +115,6 @@ export default function PsychOffers() {
     try {
       await offerService.subscribeOffer(offerId, psychologistId);
       await loadOffers();
-      // Mostrar banner temporal de éxito
       setShowSubscriptionBanner(true);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => setShowSubscriptionBanner(false), 5000);
@@ -126,7 +124,7 @@ export default function PsychOffers() {
       const message = err instanceof Error ? err.message : "";
       if (message.includes("409") || message.includes("conflict")) {
         setError("Alguien más se suscribió primero. La oferta ya no está disponible.");
-        await loadOffers(); // Sincronizar estado real
+        await loadOffers();
       } else {
         setError("Error al suscribirse. Intenta de nuevo.");
       }
@@ -189,7 +187,6 @@ export default function PsychOffers() {
           </div>
         )}
 
-        {/* Banner temporal de suscripción exitosa */}
         {showSubscriptionBanner && (
           <div className="rounded-2xl p-5 flex items-center gap-4 border" style={{ background: "#E8F5F1", borderColor: "#A7D4C5" }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: SAGE }}>

@@ -53,8 +53,6 @@ export default function Home() {
     label: string;
     endDate: string;
   } | null>(null);
-  const [loadingOffer, setLoadingOffer] = useState(true);
-  const [offerError, setOfferError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPsychologists = async () => {
@@ -73,7 +71,7 @@ export default function Home() {
   useEffect(() => {
     const fetchOffers = async () => {
       try {
-        setLoadingOffer(true);
+      
         const offers = await offerService.getTakenOffers();
         if (offers.length > 0) {
           const offer = offers[0];
@@ -86,13 +84,10 @@ export default function Home() {
         } else {
           setActiveOffer(null);
         }
-        setOfferError(null);
       } catch (err) {
         console.error("Error cargando ofertas destacadas:", err);
-        setOfferError("No se pudo cargar la oferta destacada");
         setActiveOffer(null);
       } finally {
-        setLoadingOffer(false);
       }
     };
     fetchOffers();

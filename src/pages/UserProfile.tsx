@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Camera, Save, User, Mail, FileText, Check, AlertCircle, Loader2 } from "lucide-react";
 import { useRealUser } from "../hooks/useRealUser";
-import type { Psychologist} from "../types/user";
+import type { Psychologist, Patient } from "../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -77,7 +77,7 @@ export default function UserProfile() {
       const firstName = nameParts[0];
       const lastName = nameParts.slice(1).join(" ") || "";
 
-      const updates: any = {
+      const updates: Partial<Patient | Psychologist> = {
         name: firstName,
         lastName: lastName,
         email: email,
@@ -86,7 +86,7 @@ export default function UserProfile() {
       };
 
       if (role === 'PSYCHOLOGIST') {
-        updates.biography = bio;
+        (updates as Partial<Psychologist>).biography = bio;
       }
 
       await updateProfile(updates);

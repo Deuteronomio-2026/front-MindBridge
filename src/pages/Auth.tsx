@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Brain, Shield, Users, ArrowRight, Eye, EyeOff, Check } from "lucide-react";
 import { authService } from "../service/authService";
 import { jwtDecode } from "jwt-decode";
+import { AxiosError } from 'axios';
 
 const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
@@ -46,16 +47,16 @@ export default function Auth() {
       } else {
         setError("Rol de usuario no reconocido");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Login error:", err);
-      if (err.response) {
-        const status = err.response.status;
+      if (err instanceof AxiosError) {
+        const status = err.response?.status;
         if (status === 401 || status === 500) {
           setError("Correo o contraseña incorrectos");
         } else {
-          setError(err.response.data?.message || "Error al iniciar sesión");
+          setError(err.response?.data?.message || "Error al iniciar sesión");
         }
-      } else if (err.request) {
+      } else if (err instanceof Error) {
         setError("No se pudo conectar con el servidor. Verifica tu conexión.");
       } else {
         setError("Error inesperado. Intenta de nuevo.");
