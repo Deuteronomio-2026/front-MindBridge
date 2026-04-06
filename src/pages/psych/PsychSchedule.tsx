@@ -101,19 +101,17 @@ export default function PsychSchedule() {
         const dayKey = dayOfWeekToKey(day.dayOfWeek);
         newSchedule[dayKey] = {
           enabled: day.enabled,
-          slots: day.slots
-            ? day.slots.map((s: PsychScheduleSlot) => ({
-                time: s.time,
-                modality: s.modality,
-              }))
-            : [],
-          breakStart: day.breakStart || "12:00",
-          breakEnd: day.breakEnd || "14:00",
+          slots: day.slots.map((s: PsychScheduleSlot) => ({
+            time: s.time,
+            modality: s.modality,
+          })),
+          breakStart: day.breakStart ?? "12:00",
+          breakEnd: day.breakEnd ?? "14:00",
         };
       });
     }
 
-    setSessionDuration(apiSchedule.sessionDurationMinutes || 60);
+    setSessionDuration(apiSchedule.sessionDurationMinutes ?? 60);
     setSchedule(newSchedule);
   }, []);
 
@@ -210,17 +208,17 @@ export default function PsychSchedule() {
     return map[day] || day;
   };
 
-  const transformScheduleToApi = () => {
-    const days = Object.entries(schedule)
+  const transformScheduleToApi = (): PsychologistSchedule => {
+    const days: PsychScheduleDay[] = Object.entries(schedule)
       .filter(([, dayData]) => dayData.enabled)
       .map(([dayKey, dayData]) => ({
         dayOfWeek: dayKeyToDayOfWeek(dayKey),
         enabled: true,
         breakStart: dayData.breakStart,
         breakEnd: dayData.breakEnd,
-        slots: dayData.slots.map((slot) => ({
+        slots: dayData.slots.map((slot): PsychScheduleSlot => ({
           time: slot.time,
-          status: "AVAILABLE",
+          status: "AVAILABLE" as const,
           modality: slot.modality,
         })),
       }));

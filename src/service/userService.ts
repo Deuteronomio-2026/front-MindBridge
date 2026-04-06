@@ -6,16 +6,16 @@ export type Modality = "VideoConferencia" | "Presencial" | "Chat";
 
 export type PsychScheduleSlot = {
   time: string;
-  status?: "AVAILABLE" | "BOOKED" | "DISABLED";
+  status: "AVAILABLE" | "BOOKED" | "DISABLED";
   modality: Modality;
 };
 
 export type PsychScheduleDay = {
   dayOfWeek: string;
   enabled: boolean;
-  breakStart?: string | null;
-  breakEnd?: string | null;
-  slots?: PsychScheduleSlot[];
+  breakStart: string;
+  breakEnd: string;
+  slots: PsychScheduleSlot[];
 };
 
 export type PsychologistSchedule = {

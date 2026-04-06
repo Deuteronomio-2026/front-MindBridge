@@ -148,7 +148,7 @@ export default function PsychScheduleView() {
                       )}
                     </div>
 
-                    {day.enabled && day.slots && day.slots.length > 0 && (
+                    {day.enabled && day.slots.length > 0 && (
                       <div className="mt-4">
                         <p className="text-slate-600 mb-3" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Horarios disponibles:</p>
                         <div className="flex flex-wrap gap-2">
