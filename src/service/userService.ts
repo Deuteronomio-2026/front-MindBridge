@@ -4,6 +4,14 @@ import type { Patient, Psychologist } from '../types/user';
 
 export const userService = {
   // ========================
+  // Autenticación
+  // ========================
+  register: async (userData: any) => {
+    const response = await api.post('/user/auth/register', userData);
+    return response.data;
+  },
+
+  // ========================
   // Pacientes
   // ========================
   getPatients: async (): Promise<Patient[]> => {
