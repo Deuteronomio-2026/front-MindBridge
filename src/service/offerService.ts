@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://videochat-sfu-app.azurewebsites.net/api";
 
 export interface Offer {
     id: string;
@@ -37,7 +37,6 @@ export const offerService = {
         return response.data;
     },
 
-    // ✅ Agrega este método
     cancelOffer: async (offerId: string): Promise<Offer> => {
         const response = await axios.patch(`${API_BASE_URL}/offers/${offerId}/cancel`);
         return response.data;

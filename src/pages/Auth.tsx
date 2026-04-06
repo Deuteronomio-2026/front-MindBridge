@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Brain, User, Stethoscope, Shield, ArrowRight, Eye, EyeOff, Check } from "lucide-react";
+import { useUser } from "../hooks/useUser";
 
 const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
@@ -47,6 +48,7 @@ const roles = [
 
 export default function Auth() {
   const navigate = useNavigate();
+  const { updateProfile } = useUser();
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "login">("select");
   const [email, setEmail] = useState("");
@@ -65,6 +67,23 @@ export default function Auth() {
     if (!role) return;
     setLoading(true);
     setTimeout(() => {
+      const localPart = email.split("@")[0] || role.title;
+      const normalizedName = localPart
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+
+      updateProfile({
+        name: role.key === "psicologo" ? `Dr. ${normalizedName}` : normalizedName,
+        email: email || `${selectedRole}@mindbridge.local`,
+        role: role.key as "paciente" | "psicologo" | "admin",
+        photo: null,
+        bio:
+          role.key === "psicologo"
+            ? "Psicólogo de la red MindBridge."
+            : "Busco apoyo para mejorar mi bienestar emocional y mental.",
+      });
       setLoading(false);
       navigate(role.path);
     }, 1200);

@@ -4,7 +4,6 @@ import {
   Brain, Calendar, User, Menu, X, LayoutDashboard, CalendarDays,
   Bell, ChevronDown, LogOut, Settings, Sparkles
 } from "lucide-react";
-import { UserProvider } from "../../context/UserProvider";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -41,7 +40,6 @@ export default function PsychRoot() {
   };
 
   return (
-    <UserProvider>
     <div className="min-h-screen flex flex-col" style={{ fontFamily: "'Inter', sans-serif", background: FOG }}>
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/96 backdrop-blur-sm border-b shadow-sm" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -180,6 +178,6 @@ export default function PsychRoot() {
         <Outlet />
       </main>
     </div>
-    </UserProvider>
+    
   );
 }

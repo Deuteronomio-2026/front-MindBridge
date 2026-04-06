@@ -1,14 +1,35 @@
 import { useState } from "react";
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { UserContext } from "./UserContext";
 import type { Appointment, UserProfile, UserContextType } from "../types/user";
 
+const USER_SESSION_KEY = "mindbridge.userSession";
+
 const defaultProfile: UserProfile = {
   name: "Ana García",
   email: "ana.garcia@email.com",
+  role: "paciente",
   bio: "Busco apoyo para mejorar mi bienestar emocional y mental.",
   photo: null,
 };
+
+function loadStoredProfile() {
+  if (typeof window === "undefined") {
+    return defaultProfile;
+  }
+
+  const stored = window.sessionStorage.getItem(USER_SESSION_KEY);
+  if (!stored) {
+    return defaultProfile;
+  }
+
+  try {
+    return { ...defaultProfile, ...JSON.parse(stored) } as UserProfile;
+  } catch {
+    return defaultProfile;
+  }
+}
 
 const defaultAppointments: Appointment[] = [
   {
@@ -46,9 +67,13 @@ const defaultAppointments: Appointment[] = [
 ];
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<UserProfile>(defaultProfile);
+  const [profile, setProfile] = useState<UserProfile>(loadStoredProfile);
   const [appointments, setAppointments] =
     useState<Appointment[]>(defaultAppointments);
+
+  useEffect(() => {
+    window.sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(profile));
+  }, [profile]);
 
   const updateProfile: UserContextType["updateProfile"] = (updates) => {
     setProfile((prev) => ({ ...prev, ...updates }));

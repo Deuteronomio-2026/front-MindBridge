@@ -15,6 +15,7 @@ export interface Appointment {
 export interface UserProfile {
   name: string;
   email: string;
+  role: "paciente" | "psicologo" | "admin";
   bio: string;
   photo: string | null;
 }

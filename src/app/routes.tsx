@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter, Navigate, useParams } from "react-router";
 
 import Root from "../pages/patient/Root";
 import Home from "../pages/patient/Home";
@@ -25,7 +25,21 @@ import AdminUsers from "../pages/admin/AdminUsers";
 import AdminMetrics from "../pages/admin/AdminMetrics";
 import AdminOffers from "../pages/admin/AdminOffers";
 
+function LegacyChatRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/chat/${id || ""}`} replace />;
+}
+
 export const router = createBrowserRouter([
+  {
+    path: "/chat/:id",
+    Component: ChatSession,
+  },
+
+  {
+    path: "/paciente/chat/:id",
+    Component: LegacyChatRedirect,
+  },
 
   {
     path: "/auth",
@@ -47,7 +61,6 @@ export const router = createBrowserRouter([
       { path: "reservar/:id", Component: Booking },
       { path: "perfil", Component: UserProfile },
       { path: "mis-citas", Component: Appointments },
-      { path: "chat/:id", Component: ChatSession },
       { path: "*", Component: NotFound },
     ],
   },

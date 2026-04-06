@@ -129,7 +129,7 @@ function AppointmentCard({ appointment, onCancel }: { appointment: Appointment; 
           {/* Chat button for video/chat modalities */}
           {(appointment.modality === "video" || appointment.modality === "chat") && (
             <button
-              onClick={() => navigate(`/paciente/chat/${appointment.id}`)}
+              onClick={() => navigate(`/chat/${appointment.id}`)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white transition-colors"
               style={{ background: TEAL, fontWeight: 600, fontSize: "0.825rem" }}
             >

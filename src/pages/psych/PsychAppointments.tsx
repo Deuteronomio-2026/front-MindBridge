@@ -177,7 +177,7 @@ export default function PsychAppointments() {
                   {apt.status === "upcoming" && (
                     <div className="mt-3 pt-3 border-t flex gap-2" style={{ borderColor: "rgba(26,74,92,0.07)" }}>
                       <button
-                        onClick={() => navigate("/chat/apt-1")}
+                        onClick={() => navigate(`/chat/${apt.id}`)}
                         className="flex-1 py-2.5 rounded-xl text-white flex items-center justify-center gap-1.5 transition-colors"
                         style={{ background: apt.modality === "presencial" ? SAGE : TEAL, fontWeight: 600, fontSize: "0.82rem" }}
                       >
