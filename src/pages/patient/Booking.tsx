@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useUser } from "../../hooks/useUser";
 import { StarRating } from "../../components/StarRating";
-import type { Psychologist } from "../../types/user";
+
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";

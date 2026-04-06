@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { ArrowLeft, MapPin, BadgeCheck, GraduationCap, Languages, Video, Users, MessageCircle, Star, Clock, Calendar, Loader2 } from "lucide-react";
+import { ArrowLeft, MapPin, BadgeCheck, Languages, Video, Users, MessageCircle, Star, Clock, Calendar, Loader2 } from "lucide-react";
 import { StarRating } from "../../components/StarRating";
 import { userService } from "../../service/userService";
 import type { Psychologist } from "../../types/user";

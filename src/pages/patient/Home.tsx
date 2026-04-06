@@ -6,7 +6,6 @@ import { PsychologistCard } from "../../components/PsychologistCard";
 import { useUser } from "../../hooks/useUser";
 import { offerService } from "../../service/offerService";
 import { userService } from "../../service/userService";
-import type { Offer as ApiOffer } from "../../service/offerService";
 import type { Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Camera, Save, User, Mail, FileText, Check, AlertCircle, Loader2 } from "lucide-react";
 import { useRealUser } from "../hooks/useRealUser";
-import type { Psychologist, Patient } from "../types/user";
+import type { Psychologist} from "../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";

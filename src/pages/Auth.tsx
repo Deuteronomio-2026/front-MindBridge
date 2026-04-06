@@ -6,7 +6,6 @@ import { jwtDecode } from "jwt-decode";
 
 const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
-const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
