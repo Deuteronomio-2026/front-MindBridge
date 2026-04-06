@@ -14,6 +14,7 @@ import PsychOffers from "../pages/psych/PsychOffer";
 import PsychRoot from "../pages/psych/PsychRoot";
 import PsychHome from "../pages/psych/PsychHome";
 import PsychSchedule from "../pages/psych/PsychSchedule";
+import PsychScheduleView from "../pages/psych/PsychScheduleView";
 import PsychAppointments from "../pages/psych/PsychAppointments";
 
 import Auth from "../pages/Auth";
@@ -59,7 +60,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: PsychHome },
       { path: "citas", Component: PsychAppointments },
-      { path: "agenda", Component: PsychSchedule },
+      { path: "agenda", Component: PsychScheduleView },
+      { path: "agenda/editar", Component: PsychSchedule },
       { path: "perfil", Component: UserProfile },
       { path: "ofertas", Component: PsychOffers },
     ],

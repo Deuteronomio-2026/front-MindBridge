@@ -86,4 +86,17 @@ export const userService = {
       throw new Error('Rol no soportado para actualización');
     }
   },
+
+  // ========================
+  // Horarios de Psicólogos
+  // ========================
+  getPsychologistSchedule: async (id: string): Promise<any> => {
+    const response = await api.get(`/user/psychologists/${id}/schedule`);
+    return response.data;
+  },
+
+  updatePsychologistSchedule: async (id: string, scheduleData: any): Promise<any> => {
+    const response = await api.put(`/user/psychologists/${id}/schedule`, scheduleData);
+    return response.data;
+  },
 };

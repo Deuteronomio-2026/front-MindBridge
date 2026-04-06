@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Outlet, useNavigate, useLocation, Link } from "react-router";
 import {
-  Brain, Calendar, User, Menu, X, LayoutDashboard, CalendarDays,
+  Brain, Calendar, User, Menu, X, LayoutDashboard, CalendarDays, Edit,
   Bell, ChevronDown, LogOut, Settings, Sparkles
 } from "lucide-react";
 import { UserProvider } from "../../context/UserProvider";
@@ -22,6 +22,7 @@ const navLinks = [
   { href: "/panel-psicologo", label: "Panel", icon: LayoutDashboard, exact: true },
   { href: "/panel-psicologo/citas", label: "Mis Citas", icon: Calendar },
   { href: "/panel-psicologo/agenda", label: "Agenda", icon: CalendarDays },
+  { href: "/panel-psicologo/agenda/editar", label: "Editar Agenda", icon: Edit },
   { href: "/panel-psicologo/perfil", label: "Mi Perfil", icon: User },
   { href: "/panel-psicologo/ofertas", label: "Ofertas", icon: Sparkles },
 ];
