@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useParams, useNavigate, useLocation } from "react-router";
 import {
   ArrowLeft, ArrowRight, Video, Users, MessageCircle,
   Check, Clock, RefreshCw, Calendar, UserPlus, RotateCcw
 } from "lucide-react";
-import { psychologists, dayNames, dayFromDate } from "../../data/psychologists";
 import { useUser } from "../../hooks/useUser";
 import { StarRating } from "../../components/StarRating";
+import type { Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -22,16 +22,56 @@ interface SlotStatus {
   available: boolean;
 }
 
-function generateInitialBookedSlots(slots: string[]): string[] {
-  return slots.filter(() => Math.random() > 0.6);
-}
+// Generar horarios de ejemplo (9:00 a 18:00, cada hora)
+const generateTimeSlots = (): string[] => {
+  const slots: string[] = [];
+  for (let i = 9; i <= 18; i++) {
+    slots.push(`${i}:00`);
+  }
+  return slots;
+};
+
+// Generar ocupación aleatoria para simular concurrencia
+const generateRandomBookedSlots = (allSlots: string[]): string[] => {
+  return allSlots.filter(() => Math.random() > 0.6);
+};
 
 export default function Booking() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { addAppointment } = useUser();
 
-  const psychologist = psychologists.find((p) => p.id === id);
+  // Obtener psicólogo desde el state (enviado desde PsychologistDetail) o por ID (fallback)
+  const psychologistFromState = location.state?.psychologist as any;
+  const [psychologist, setPsychologist] = useState<any>(psychologistFromState || null);
+  const [loading, setLoading] = useState(!psychologistFromState);
+
+  // Si no vino por state, lo obtenemos del backend (pero para demo, podemos usar datos simulados)
+  useEffect(() => {
+    if (!psychologistFromState && id) {
+      // Simulación rápida: creamos un objeto con los datos mínimos que necesita Booking
+      // En producción aquí llamarías a userService.getPsychologistById(id)
+      setPsychologist({
+        id,
+        name: "Psicólogo",
+        title: "Especialista",
+        specialties: ["Psicología"],
+        location: "Ubicación no especificada",
+        rating: 4.5,
+        reviewCount: 0,
+        photo: "https://via.placeholder.com/120",
+        prices: {
+          video: 150,
+          presencial: 200,
+          chat: 120,
+        },
+      });
+      setLoading(false);
+    } else {
+      setLoading(false);
+    }
+  }, [id, psychologistFromState]);
 
   const [step, setStep] = useState(1);
   const [sessionType, setSessionType] = useState<SessionType | null>(null);
@@ -42,43 +82,33 @@ export default function Booking() {
   const [confirmed, setConfirmed] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
+  // Generar días disponibles (próximos 14 días)
   const availableDates = Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i + 1);
     return d;
-  }).filter((d) => {
-    const dayKey = dayFromDate(d);
-    return psychologist && (psychologist.schedule[dayKey]?.length ?? 0) > 0;
   });
 
+  // Estado de slots ocupados (simulación)
+  const allTimeSlots = generateTimeSlots();
   const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>(() => {
-    if (!psychologist) return {};
     const initial: Record<string, string[]> = {};
-    Array.from({ length: 14 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() + i + 1);
-      return d;
-    })
-      .filter((d) => (psychologist.schedule[dayFromDate(d)]?.length ?? 0) > 0)
-      .forEach((d) => {
-        const slots = psychologist.schedule[dayFromDate(d)] || [];
-        initial[d.toDateString()] = generateInitialBookedSlots(slots);
-      });
+    availableDates.forEach((d) => {
+      initial[d.toDateString()] = generateRandomBookedSlots(allTimeSlots);
+    });
     return initial;
   });
 
+  // Simular actualización en tiempo real cada 30 segundos
   useEffect(() => {
-    if (!psychologist) return;
     const interval = setInterval(() => {
       setIsUpdating(true);
       setTimeout(() => {
         setBookedSlots((prev) => {
           const updated = { ...prev };
           availableDates.forEach((d) => {
-            const dayKey = dayFromDate(d);
-            const slots = psychologist.schedule[dayKey] || [];
             if (Math.random() > 0.7) {
-              updated[d.toDateString()] = generateInitialBookedSlots(slots);
+              updated[d.toDateString()] = generateRandomBookedSlots(allTimeSlots);
             }
           });
           return updated;
@@ -98,7 +128,15 @@ export default function Booking() {
     }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [psychologist?.id, selectedDate, selectedTime]);
+  }, [selectedDate, selectedTime]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <div className="text-center">Cargando datos del psicólogo...</div>
+      </div>
+    );
+  }
 
   if (!psychologist) {
     return (
@@ -112,10 +150,9 @@ export default function Booking() {
   }
 
   const getDaySlots = (date: Date): SlotStatus[] => {
-    const dayKey = dayFromDate(date);
-    const allSlots = psychologist.schedule[dayKey] || [];
-    const booked = bookedSlots[date.toDateString()] || [];
-    return allSlots.map((time) => ({ time, available: !booked.includes(time) }));
+    const key = date.toDateString();
+    const booked = bookedSlots[key] || [];
+    return allTimeSlots.map((time) => ({ time, available: !booked.includes(time) }));
   };
 
   const modalityOptions = [
@@ -153,7 +190,7 @@ export default function Booking() {
     const appointment = {
       id: `apt-${Date.now()}`,
       psychologistId: psychologist.id,
-      psychologistName: `${psychologist.title} ${psychologist.name}`,
+      psychologistName: `${psychologist.title || ""} ${psychologist.name}`.trim(),
       psychologistPhoto: psychologist.photo,
       specialty: psychologist.specialties[0],
       sessionType,
@@ -239,7 +276,7 @@ export default function Booking() {
       <div style={{ background: `linear-gradient(135deg, #0D2E38 0%, ${TEAL} 100%)` }} className="py-8 px-6">
         <div className="max-w-2xl mx-auto">
           <button
-            onClick={() => navigate(`/paciente/psicologo/${psychologist.id}`)}
+            onClick={() => navigate(-1)}
             className="flex items-center gap-2 mb-5 transition-colors hover:text-white"
             style={{ color: MINT, fontSize: "0.875rem" }}
           >
@@ -383,13 +420,14 @@ export default function Booking() {
               </p>
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {availableDates.map((date) => {
-                  const dayKey = dayFromDate(date);
                   const slots = getDaySlots(date);
                   const availableCount = slots.filter((s) => s.available).length;
                   const isSelected = selectedDate?.toDateString() === date.toDateString();
                   return (
                     <button key={date.toISOString()} onClick={() => { setSelectedDate(date); setSelectedTime(null); }} className="flex-shrink-0 w-16 py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: isSelected ? TEAL : "rgba(26,74,92,0.2)", background: isSelected ? TEAL : "white" }}>
-                      <p className="capitalize" style={{ color: isSelected ? `${MINT}CC` : "#94a3b8", fontSize: "0.7rem", fontWeight: 600 }}>{dayNames[dayKey]?.slice(0, 3) || ""}</p>
+                      <p className="capitalize" style={{ color: isSelected ? `${MINT}CC` : "#94a3b8", fontSize: "0.7rem", fontWeight: 600 }}>
+                        {date.toLocaleDateString("es-ES", { weekday: "short" }).replace(".", "")}
+                      </p>
                       <p style={{ color: isSelected ? "white" : "#1e293b", fontWeight: 800, fontSize: "1.1rem" }}>{date.getDate()}</p>
                       <p style={{ color: isSelected ? MINT : availableCount > 0 ? SAGE : "#94a3b8", fontSize: "0.65rem" }}>{availableCount > 0 ? `${availableCount} libre${availableCount > 1 ? "s" : ""}` : "lleno"}</p>
                     </button>

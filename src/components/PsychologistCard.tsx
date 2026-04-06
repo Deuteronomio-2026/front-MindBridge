@@ -11,10 +11,9 @@ const FOG = "#EEF4F7";
 interface PsychologistCardProps {
   psychologist: Psychologist;
   variant?: "grid" | "list";
-  // Oferta activa — si viene, muestra badge y precios con descuento
   featuredOffer?: {
     discountPercent: number;
-    label: string; // ej: "Oferta Abril"
+    label: string;
   };
 }
 
@@ -22,8 +21,18 @@ function discounted(price: number, percent: number) {
   return Math.round(price * (1 - percent / 100));
 }
 
+// Función auxiliar para obtener el título profesional (Dr. / Dra.)
+function getProfessionalTitle(name: string): string {
+  // Si el nombre termina con 'a', asumimos femenino -> Dra.
+  if (name.trim().endsWith("a")) {
+    return "Dra.";
+  }
+  return "Dr.";
+}
+
 export function PsychologistCard({ psychologist, variant = "grid", featuredOffer }: PsychologistCardProps) {
   const navigate = useNavigate();
+  const professionalTitle = getProfessionalTitle(psychologist.name);
 
   if (variant === "list") {
     return (
@@ -33,7 +42,7 @@ export function PsychologistCard({ psychologist, variant = "grid", featuredOffer
         onClick={() => navigate(`/paciente/psicologo/${psychologist.id}`)}
       >
         <div className="relative flex-shrink-0">
-          <img src={psychologist.photo} alt={`${psychologist.title} ${psychologist.name}`}
+          <img src={psychologist.photo} alt={`${professionalTitle} ${psychologist.name}`}
             className="w-24 h-24 rounded-xl object-cover" />
           {psychologist.verified && (
             <div className="absolute -bottom-1 -right-1 rounded-full p-0.5" style={{ background: TEAL }}>
@@ -53,7 +62,7 @@ export function PsychologistCard({ psychologist, variant = "grid", featuredOffer
                 </div>
               )}
               <h3 className="text-slate-900" style={{ fontWeight: 700, fontSize: "1.05rem" }}>
-                {psychologist.title} {psychologist.name}
+                {professionalTitle} {psychologist.name}
               </h3>
               <p style={{ color: TEAL, fontSize: "0.85rem" }}>{psychologist.specialties[0]}</p>
             </div>
@@ -107,7 +116,7 @@ export function PsychologistCard({ psychologist, variant = "grid", featuredOffer
       onClick={() => navigate(`/paciente/psicologo/${psychologist.id}`)}
     >
       <div className="relative w-full" style={{ height: 200 }}>
-        <img src={psychologist.photo} alt={`${psychologist.title} ${psychologist.name}`}
+        <img src={psychologist.photo} alt={`${professionalTitle} ${psychologist.name}`}
           className="w-full h-full object-cover object-top" />
         <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(26,74,92,0.7) 0%, transparent 55%)" }} />
 
@@ -130,7 +139,7 @@ export function PsychologistCard({ psychologist, variant = "grid", featuredOffer
 
         <div className="absolute bottom-0 left-0 right-0 px-4 py-3">
           <h3 className="text-white" style={{ fontWeight: 700, fontSize: "1.05rem" }}>
-            {psychologist.title} {psychologist.name}
+            {professionalTitle} {psychologist.name}
           </h3>
           <p className="text-white/80" style={{ fontSize: "0.8rem" }}>{psychologist.specialties[0]}</p>
         </div>

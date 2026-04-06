@@ -1,11 +1,13 @@
 import { useNavigate } from "react-router";
-import { Search, Sparkles } from "lucide-react";
+import { Search, Sparkles, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { psychologists, specialtyOptions } from "../../data/psychologists";
+import { specialtyOptions } from "../../data/psychologists";
 import { PsychologistCard } from "../../components/PsychologistCard";
 import { useUser } from "../../hooks/useUser";
 import { offerService } from "../../service/offerService";
+import { userService } from "../../service/userService";
 import type { Offer as ApiOffer } from "../../service/offerService";
+import type { Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
@@ -15,10 +17,36 @@ const MINT = "#A8D5C2";
 
 const QUICK_SPECIALTIES = specialtyOptions.slice(0, 8);
 
+const mapToMockFormat = (p: Psychologist) => ({
+  id: p.id,
+  name: `${p.name} ${p.lastName}`,
+  title: p.specialization,
+  specialties: [p.specialization],
+  location: p.address || p.officeLocation || "Ubicación no especificada",
+  rating: 4.5,
+  reviewCount: 0,
+  photo: "https://via.placeholder.com/120",
+  verified: p.verificationStatus === "VERIFIED",
+  experience: p.yearsOfExperience,
+  bio: p.biography || "",
+  education: [],
+  languages: p.languages,
+  prices: {
+    video: p.consultationFee,
+    presencial: p.consultationFee + 50,
+    chat: p.consultationFee - 30,
+  },
+  schedule: {},
+  reviews: [],
+});
+
 export default function Home() {
   const navigate = useNavigate();
   const { appointments } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
+
+  const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
+  const [loadingPsychologists, setLoadingPsychologists] = useState(true);
 
   const [activeOffer, setActiveOffer] = useState<{
     psychologistId: string;
@@ -26,26 +54,49 @@ export default function Home() {
     label: string;
     endDate: string;
   } | null>(null);
-
   const [loadingOffer, setLoadingOffer] = useState(true);
+  const [offerError, setOfferError] = useState<string | null>(null);
 
   useEffect(() => {
-    offerService.getTakenOffers()
-      .then((offers: ApiOffer[]) => {
+    const fetchPsychologists = async () => {
+      try {
+        const data = await userService.getPsychologists();
+        setPsychologists(data);
+      } catch (err) {
+        console.error("Error cargando psicólogos:", err);
+      } finally {
+        setLoadingPsychologists(false);
+      }
+    };
+    fetchPsychologists();
+  }, []);
+
+  useEffect(() => {
+    const fetchOffers = async () => {
+      try {
+        setLoadingOffer(true);
+        const offers = await offerService.getTakenOffers();
         if (offers.length > 0) {
           const offer = offers[0];
           setActiveOffer({
             psychologistId: offer.psychologistId ?? "",
-            discountPercent: 20,
+            discountPercent: offer.discountPercent,
             label: offer.title,
             endDate: offer.endDate,
           });
+        } else {
+          setActiveOffer(null);
         }
-      })
-      .catch(() => {})
-      .finally(() => {
+        setOfferError(null);
+      } catch (err) {
+        console.error("Error cargando ofertas destacadas:", err);
+        setOfferError("No se pudo cargar la oferta destacada");
+        setActiveOffer(null);
+      } finally {
         setLoadingOffer(false);
-      });
+      }
+    };
+    fetchOffers();
   }, []);
 
   const featuredPsychologist = activeOffer
@@ -75,10 +126,17 @@ export default function Home() {
     return date.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" });
   };
 
+  if (loadingPsychologists && psychologists.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <Loader2 className="animate-spin" size={32} style={{ color: TEAL }} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: FOG }}>
-
-      {/* ── HERO ── */}
+      {/* Hero section */}
       <section
         className="relative overflow-hidden"
         style={{ background: `linear-gradient(135deg, ${TEAL_DARK} 0%, ${TEAL} 60%, #2D7D9A 100%)` }}
@@ -140,38 +198,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── BANNER DE OFERTA ── */}
-      <section className="max-w-4xl mx-auto px-6 pt-8">
-        <div className="bg-white border rounded-2xl p-5 shadow-sm">
-          {loadingOffer ? (
-            <p className="text-slate-400 text-sm">Cargando ofertas...</p>
-          ) : activeOffer ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Oferta activa</p>
-                <h3 className="font-bold text-lg">
-                  {activeOffer.label}
-                </h3>
-                <p className="text-sm text-slate-500">
-                  {activeOffer.discountPercent}% de descuento hasta {activeOffer.endDate}
-                </p>
-              </div>
-              <Sparkles style={{ color: CORAL }} />
-            </div>
-          ) : (
-            <div className="text-center">
-              <p className="font-semibold text-slate-700">
-                🎁 Próximamente ofertas especiales
-              </p>
-              <p className="text-sm text-slate-400">
-                Estamos preparando beneficios exclusivos para ti
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── PRÓXIMA CITA ── */}
+      {/* Próxima cita (mock) */}
       {nextAppointment && (
         <div className="max-w-4xl mx-auto px-6 pt-6">
           <div className="bg-white p-4 rounded-xl border">
@@ -184,24 +211,30 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── DESTACADO ── */}
+      {/* Psicólogo destacado */}
       {featuredPsychologist && (
         <section className="max-w-4xl mx-auto px-6 pt-10">
           <h2 className="font-bold mb-3">Psicólogo destacado</h2>
-          <PsychologistCard psychologist={featuredPsychologist} />
+          <PsychologistCard
+            psychologist={mapToMockFormat(featuredPsychologist)}
+            featuredOffer={{ discountPercent: activeOffer!.discountPercent, label: activeOffer!.label }}
+          />
         </section>
       )}
 
-      {/* ── OTROS ── */}
+      {/* Otros psicólogos destacados */}
       <section className="max-w-4xl mx-auto px-6 pt-8 pb-14">
         <h2 className="font-bold mb-3">Mejor valorados</h2>
-        <div className="grid grid-cols-3 gap-4">
-          {regularFeatured.map((p) => (
-            <PsychologistCard key={p.id} psychologist={p} />
-          ))}
-        </div>
+        {regularFeatured.length === 0 ? (
+          <p className="text-slate-400 text-center">No hay más psicólogos disponibles</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {regularFeatured.map((p) => (
+              <PsychologistCard key={p.id} psychologist={mapToMockFormat(p)} />
+            ))}
+          </div>
+        )}
       </section>
-
     </div>
   );
 }

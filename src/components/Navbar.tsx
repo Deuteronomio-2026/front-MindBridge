@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { Brain, Calendar, User, Menu, X, ChevronDown, Bell, LogOut } from "lucide-react";
-import { useUser } from "../hooks/useUser";
+import { useRealUser } from "../hooks/useRealUser";
 
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
@@ -20,7 +20,7 @@ export function Navbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile } = useUser();
+  const { profile, loading, role } = useRealUser();
 
   const unreadCount = mockNotifications.filter((n) => !n.read).length;
 
@@ -31,9 +31,19 @@ export function Navbar() {
   ];
 
   const isActive = (href: string) => {
-    if (href === "/") return location.pathname === "/";
+    if (href === "/paciente") return location.pathname === "/paciente";
     return location.pathname.startsWith(href);
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    navigate("/auth");
+  };
+
+  const displayName = profile?.name?.split(" ")[0] || "Usuario";
+  const displayInitial = profile?.name?.charAt(0) || "U";
+  const userRoleText = role === "PATIENT" ? "Paciente" : role === "PSYCHOLOGIST" ? "Psicólogo" : "Usuario";
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/96 backdrop-blur-sm border-b shadow-sm" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
@@ -70,7 +80,7 @@ export function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
-            {/* Notifications */}
+            {/* Notifications (mock) */}
             <div className="relative">
               <button
                 onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
@@ -145,16 +155,12 @@ export function Navbar() {
                 onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
               >
                 <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "#C8DDE8" }}>
-                  {profile.photo ? (
-                    <img src={profile.photo} alt={profile.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span style={{ color: TEAL, fontSize: "0.75rem", fontWeight: 700 }}>
-                      {profile.name.charAt(0)}
-                    </span>
-                  )}
+                  <span style={{ color: TEAL, fontSize: "0.75rem", fontWeight: 700 }}>
+                    {loading ? "..." : displayInitial}
+                  </span>
                 </div>
                 <span className="hidden sm:block max-w-24 truncate" style={{ color: "#2d4a5a", fontSize: "0.875rem", fontWeight: 500 }}>
-                  {profile.name.split(" ")[0]}
+                  {loading ? "Cargando..." : displayName}
                 </span>
                 <ChevronDown size={14} className="text-slate-400" />
               </button>
@@ -162,8 +168,12 @@ export function Navbar() {
               {profileOpen && (
                 <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border py-2 z-50" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
                   <div className="px-4 py-2 border-b mb-1" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
-                    <p className="text-slate-700" style={{ fontWeight: 600, fontSize: "0.85rem" }}>{profile.name}</p>
-                    <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>Paciente</p>
+                    <p className="text-slate-700" style={{ fontWeight: 600, fontSize: "0.85rem" }}>
+                      {loading ? "Cargando..." : profile?.name || "Usuario"}
+                    </p>
+                    <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>
+                      {userRoleText}
+                    </p>
                   </div>
                   <button
                     className="w-full px-4 py-2.5 text-left flex items-center gap-2 transition-colors hover:bg-slate-50"
@@ -185,10 +195,10 @@ export function Navbar() {
                   <button
                     className="w-full px-4 py-2.5 text-left flex items-center gap-2 transition-colors hover:bg-slate-50"
                     style={{ fontSize: "0.875rem", color: "#4a6572" }}
-                    onClick={() => { navigate("/auth"); setProfileOpen(false); }}
+                    onClick={handleLogout}
                   >
                     <LogOut size={15} className="text-slate-400" />
-                    Cambiar rol
+                    Cerrar sesión
                   </button>
                 </div>
               )}
@@ -233,15 +243,14 @@ export function Navbar() {
             <User size={16} />
             Mi Perfil
           </Link>
-          <Link
-            to="/auth"
-            className="px-4 py-3 rounded-xl no-underline flex items-center gap-2"
+          <button
+            onClick={() => { handleLogout(); setMobileOpen(false); }}
+            className="px-4 py-3 rounded-xl flex items-center gap-2 w-full text-left"
             style={{ color: "#4a6572", fontWeight: 500 }}
-            onClick={() => setMobileOpen(false)}
           >
             <LogOut size={16} />
-            Cambiar rol
-          </Link>
+            Cerrar sesión
+          </button>
         </div>
       )}
 
