@@ -71,7 +71,6 @@ export default function Home() {
   useEffect(() => {
     const fetchOffers = async () => {
       try {
-      
         const offers = await offerService.getTakenOffers();
         if (offers.length > 0) {
           const offer = offers[0];
@@ -87,8 +86,8 @@ export default function Home() {
       } catch (err) {
         console.error("Error cargando ofertas destacadas:", err);
         setActiveOffer(null);
-      } finally {
       }
+      // finally vacío eliminado
     };
     fetchOffers();
   }, []);
