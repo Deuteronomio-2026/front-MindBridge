@@ -1,7 +1,9 @@
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { ArrowLeft, MapPin, BadgeCheck, GraduationCap, Languages, Video, Users, MessageCircle, Star, Clock, Calendar } from "lucide-react";
-import { psychologists, dayNames, dayFromDate } from "../../data/psychologists";
+import { ArrowLeft, MapPin, BadgeCheck, Languages, Video, Users, MessageCircle, Star, Clock, Calendar, Loader2 } from "lucide-react";
 import { StarRating } from "../../components/StarRating";
+import { userService } from "../../service/userService";
+import type { Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -9,16 +11,97 @@ const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
 
+const mapPsychologistToLocal = (p: Psychologist) => ({
+  id: p.id,
+  name: `${p.name} ${p.lastName}`,
+  title: p.specialization,
+  verified: p.verificationStatus === "VERIFIED",
+  specialties: [p.specialization],
+  location: p.address || p.officeLocation || "Ubicación no especificada",
+  rating: 4.8,
+  reviewCount: 12,
+  experience: p.yearsOfExperience,
+  bio: p.biography || "",
+  languages: p.languages || [],
+  education: [],
+  prices: {
+    video: p.consultationFee,
+    presencial: p.consultationFee + 50,
+    chat: p.consultationFee - 30,
+  },
+  schedule: {},
+  reviews: [
+    {
+      id: "1",
+      user: "María G.",
+      avatar: "MG",
+      rating: 5,
+      date: "15/03/2026",
+      comment: "Excelente profesional, muy empático y resolutivo."
+    },
+    {
+      id: "2",
+      user: "Carlos L.",
+      avatar: "CL",
+      rating: 4.5,
+      date: "02/04/2026",
+      comment: "Muy buena terapia, me ayudó mucho."
+    },
+    {
+      id: "3",
+      user: "Ana R.",
+      avatar: "AR",
+      rating: 5,
+      date: "20/03/2026",
+      comment: "Recomendado 100%. Profesional con mucha experiencia."
+    }
+  ],
+  photo: "https://via.placeholder.com/120",
+});
+
 export default function PsychologistDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [psychologist, setPsychologist] = useState<ReturnType<typeof mapPsychologistToLocal> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const psychologist = psychologists.find((p) => p.id === id);
+  useEffect(() => {
+    if (!id) {
+      setError("ID de psicólogo no proporcionado");
+      setLoading(false);
+      return;
+    }
 
-  if (!psychologist) {
+    const fetchPsychologist = async () => {
+      try {
+        setLoading(true);
+        const data = await userService.getPsychologistById(id);
+        setPsychologist(mapPsychologistToLocal(data));
+        setError(null);
+      } catch (err) {
+        console.error("Error cargando psicólogo:", err);
+        setError("No se pudo cargar la información del psicólogo");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPsychologist();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOG }}>
+        <Loader2 className="animate-spin" size={32} style={{ color: TEAL }} />
+      </div>
+    );
+  }
+
+  if (error || !psychologist) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-slate-500 mb-4">Psicólogo no encontrado</p>
+        <p className="text-slate-500 mb-4">{error || "Psicólogo no encontrado"}</p>
         <button onClick={() => navigate("/paciente/psicologos")} style={{ color: TEAL }}>
           Volver a la lista
         </button>
@@ -80,7 +163,7 @@ export default function PsychologistDetail() {
             <div className="relative flex-shrink-0">
               <img
                 src={psychologist.photo}
-                alt={`${psychologist.title} ${psychologist.name}`}
+                alt={psychologist.name}
                 className="w-32 h-32 rounded-2xl object-cover shadow-xl"
               />
               {psychologist.verified && (
@@ -92,7 +175,7 @@ export default function PsychologistDetail() {
             <div className="flex-1">
               <div className="flex flex-wrap items-start gap-3 mb-2">
                 <h1 className="text-white" style={{ fontSize: "1.75rem", fontWeight: 800 }}>
-                  {psychologist.title} {psychologist.name}
+                  {psychologist.name}
                 </h1>
                 {psychologist.verified && (
                   <span className="px-2.5 py-1 rounded-full flex items-center gap-1.5 mt-1" style={{ background: "rgba(255,255,255,0.15)", color: MINT, fontSize: "0.75rem", fontWeight: 500 }}>
@@ -133,46 +216,30 @@ export default function PsychologistDetail() {
             <div className="bg-white rounded-2xl p-6 shadow-sm border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
               <h2 className="text-slate-900 mb-3" style={{ fontWeight: 700, fontSize: "1.1rem" }}>Sobre mí</h2>
               <p className="text-slate-600 leading-relaxed" style={{ fontSize: "0.9rem" }}>
-                {psychologist.bio}
+                {psychologist.bio || "Sin información adicional."}
               </p>
             </div>
 
-            {/* Education */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: FOG }}>
-                  <GraduationCap size={16} style={{ color: TEAL }} />
-                </div>
-                <h2 className="text-slate-900" style={{ fontWeight: 700, fontSize: "1.1rem" }}>Formación académica</h2>
-              </div>
-              <ul className="flex flex-col gap-3">
-                {psychologist.education.map((e, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: MINT }} />
-                    <span className="text-slate-600" style={{ fontSize: "0.875rem" }}>{e}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
             {/* Languages */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#F0F9FF" }}>
-                  <Languages size={16} style={{ color: "#0EA5E9" }} />
+            {psychologist.languages.length > 0 && (
+              <div className="bg-white rounded-2xl p-6 shadow-sm border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#F0F9FF" }}>
+                    <Languages size={16} style={{ color: "#0EA5E9" }} />
+                  </div>
+                  <h2 className="text-slate-900" style={{ fontWeight: 700, fontSize: "1.1rem" }}>Idiomas</h2>
                 </div>
-                <h2 className="text-slate-900" style={{ fontWeight: 700, fontSize: "1.1rem" }}>Idiomas</h2>
+                <div className="flex flex-wrap gap-2">
+                  {psychologist.languages.map((l) => (
+                    <span key={l} className="px-3 py-1.5 rounded-full" style={{ background: "#F0F9FF", color: "#0EA5E9", fontSize: "0.875rem", fontWeight: 500 }}>
+                      {l}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {psychologist.languages.map((l) => (
-                  <span key={l} className="px-3 py-1.5 rounded-full" style={{ background: "#F0F9FF", color: "#0EA5E9", fontSize: "0.875rem", fontWeight: 500 }}>
-                    {l}
-                  </span>
-                ))}
-              </div>
-            </div>
+            )}
 
-            {/* Availability preview */}
+            {/* Availability preview (placeholder) */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#E8F5F1" }}>
@@ -182,9 +249,7 @@ export default function PsychologistDetail() {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 {nextDays.map((date) => {
-                  const dayKey = dayFromDate(date);
-                  const slots = psychologist.schedule[dayKey] || [];
-                  const hasSlots = slots.length > 0;
+                  const hasSlots = false;
                   return (
                     <div
                       key={date.toISOString()}
@@ -194,17 +259,14 @@ export default function PsychologistDetail() {
                         borderColor: hasSlots ? "#A8D5C2" : "#e2e8f0",
                       }}
                     >
-                      <p
-                        className="capitalize mb-1"
-                        style={{ color: hasSlots ? SAGE : "#94a3b8", fontSize: "0.75rem", fontWeight: 600 }}
-                      >
-                        {dayNames[dayKey]?.slice(0, 3) || dayKey.slice(0, 3)}
+                      <p className="capitalize mb-1" style={{ color: hasSlots ? SAGE : "#94a3b8", fontSize: "0.75rem", fontWeight: 600 }}>
+                        {date.toLocaleDateString("es-ES", { weekday: "short" }).replace(".", "")}
                       </p>
                       <p style={{ color: hasSlots ? "#1a3328" : "#94a3b8", fontWeight: 700, fontSize: "1.1rem" }}>
                         {date.getDate()}
                       </p>
                       <p style={{ color: hasSlots ? SAGE : "#94a3b8", fontSize: "0.7rem" }}>
-                        {hasSlots ? `${slots.length} horarios` : "Sin disponibilidad"}
+                        {hasSlots ? "Horarios disponibles" : "Sin disponibilidad"}
                       </p>
                     </div>
                   );
@@ -222,6 +284,7 @@ export default function PsychologistDetail() {
                   Reseñas ({psychologist.reviewCount})
                 </h2>
               </div>
+
               {/* Rating summary */}
               <div className="flex items-center gap-4 mb-6 p-4 rounded-xl" style={{ background: FOG }}>
                 <div className="text-center">
@@ -235,7 +298,12 @@ export default function PsychologistDetail() {
                 </div>
                 <div className="flex-1">
                   {[5, 4, 3, 2, 1].map((star) => {
-                    const pct = star >= 4 ? (star === 5 ? 70 : 20) : star === 3 ? 8 : 2;
+                    let pct = 0;
+                    if (star === 5) pct = Math.min(80, psychologist.rating * 15);
+                    else if (star === 4) pct = Math.min(60, psychologist.rating * 10);
+                    else if (star === 3) pct = 10;
+                    else if (star === 2) pct = 5;
+                    else pct = 2;
                     return (
                       <div key={star} className="flex items-center gap-2 mb-1">
                         <span className="text-slate-400 w-3" style={{ fontSize: "0.75rem" }}>{star}</span>
@@ -249,6 +317,7 @@ export default function PsychologistDetail() {
                 </div>
               </div>
 
+              {/* Lista de reseñas */}
               <div className="flex flex-col gap-4">
                 {psychologist.reviews.map((review) => (
                   <div key={review.id} className="border-b pb-4 last:border-0 last:pb-0" style={{ borderColor: "rgba(26,74,92,0.06)" }}>
@@ -307,7 +376,6 @@ export default function PsychologistDetail() {
                   ))}
                 </div>
 
-                {/* ✅ CORRECCIÓN AQUÍ: se agregó el prefijo "/paciente" */}
                 <button
                   onClick={() => navigate(`/paciente/reservar/${psychologist.id}`)}
                   className="w-full py-3.5 text-white rounded-xl transition-colors hover:opacity-90"
@@ -329,7 +397,6 @@ export default function PsychologistDetail() {
                 </div>
               </div>
 
-              {/* Quick info */}
               <div className="rounded-2xl p-5 mt-4" style={{ background: "#F5EDD8" }}>
                 <p className="text-slate-700 mb-3" style={{ fontWeight: 600, fontSize: "0.875rem" }}>
                   Primera sesión sin costo adicional de evaluación
