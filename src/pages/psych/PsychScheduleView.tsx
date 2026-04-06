@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Clock, AlertCircle, Loader, Edit, Video, User, MessageSquare } from "lucide-react";
-import { userService } from "../../service/userService";
+import { userService, type PsychologistSchedule } from "../../service/userService";
+import type { Patient, Psychologist } from "../../types/user";
 import { useNavigate } from "react-router";
 
 const TEAL = "#1A4A5C";
@@ -35,7 +36,7 @@ const getModalityColor = (modality: string) => {
 };
 
 export default function PsychScheduleView() {
-  const [schedule, setSchedule] = useState<any>(null);
+  const [schedule, setSchedule] = useState<PsychologistSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -43,14 +44,14 @@ export default function PsychScheduleView() {
   useEffect(() => {
     const loadSchedule = async () => {
       try {
-        const profile = await userService.getMyProfile() as any;
-        if (profile.id) {
-          const scheduleData = await userService.getPsychologistSchedule(profile.id);
+        const profile = await userService.getMyProfile();
+        const typedProfile = profile as (Patient | Psychologist) & { id?: string };
+        if (typedProfile.id) {
+          const scheduleData = await userService.getPsychologistSchedule(typedProfile.id);
           setSchedule(scheduleData);
         }
-      } catch (err) {
+      } catch {
         setError("No hay agenda configurada aún");
-        console.error("Error loading schedule:", err);
       } finally {
         setLoading(false);
       }
@@ -129,7 +130,7 @@ export default function PsychScheduleView() {
             <div>
               <h2 className="text-slate-900 mb-4" style={{ fontWeight: 700, fontSize: "1.1rem" }}>Horarios por Día</h2>
               <div className="space-y-3">
-                {schedule.days && schedule.days.map((day: any, idx: number) => (
+                {schedule.days && schedule.days.map((day, idx) => (
                   <div key={idx} className="bg-white rounded-xl shadow-sm border p-5" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
                     <div className="flex items-start justify-between">
                       <div>
@@ -151,7 +152,7 @@ export default function PsychScheduleView() {
                       <div className="mt-4">
                         <p className="text-slate-600 mb-3" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Horarios disponibles:</p>
                         <div className="flex flex-wrap gap-2">
-                          {day.slots.map((slot: any, slotIdx: number) => (
+                          {day.slots.map((slot, slotIdx) => (
                             <div
                               key={slotIdx}
                               className="px-3 py-2 rounded-lg text-white text-sm flex items-center gap-2"

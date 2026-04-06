@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Check, Clock, Save, AlertCircle, Video, User, MessageSquare } from "lucide-react";
-import { userService } from "../../service/userService";
+import { userService, type PsychologistSchedule, type PsychScheduleDay, type PsychScheduleSlot, type Modality } from "../../service/userService";
+import type { Patient, Psychologist } from "../../types/user";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -68,29 +69,7 @@ export default function PsychSchedule() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeZone] = useState("America/Bogota");
-  const [selectedModality, setSelectedModality] = useState<"VideoConferencia" | "Presencial" | "Chat">("VideoConferencia");
-
-  // Load psychologist profile on mount
-  useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const profile = await userService.getMyProfile() as any;
-        if (profile.id) {
-          setPsychologistId(profile.id);
-          // Cargar la agenda actual
-          try {
-            const scheduleData = await userService.getPsychologistSchedule(profile.id);
-            loadScheduleFromApi(scheduleData);
-          } catch (err) {
-            console.log("No hay agenda guardada, usando valores por defecto");
-          }
-        }
-      } catch (err) {
-        console.error("Error loading psychologist profile:", err);
-      }
-    };
-    loadProfile();
-  }, []);
+  const [selectedModality, setSelectedModality] = useState<Modality>("VideoConferencia");
 
   const dayOfWeekToKey = (dayOfWeek: string): string => {
     const map: Record<string, string> = {
@@ -105,7 +84,8 @@ export default function PsychSchedule() {
     return map[dayOfWeek] || dayOfWeek.toLowerCase();
   };
 
-  const loadScheduleFromApi = (apiSchedule: any) => {
+  // Load psychologist profile on mount
+  const loadScheduleFromApi = useCallback((apiSchedule: PsychologistSchedule) => {
     const newSchedule: Record<string, DaySchedule> = {
       monday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
       tuesday: { enabled: false, slots: [], breakStart: "12:00", breakEnd: "14:00" },
@@ -117,14 +97,14 @@ export default function PsychSchedule() {
     };
 
     if (apiSchedule.days && Array.isArray(apiSchedule.days)) {
-      apiSchedule.days.forEach((day: any) => {
+      apiSchedule.days.forEach((day: PsychScheduleDay) => {
         const dayKey = dayOfWeekToKey(day.dayOfWeek);
         newSchedule[dayKey] = {
           enabled: day.enabled,
           slots: day.slots
-            ? day.slots.map((s: any) => ({
+            ? day.slots.map((s: PsychScheduleSlot) => ({
                 time: s.time,
-                modality: s.modality || "VideoConferencia",
+                modality: s.modality,
               }))
             : [],
           breakStart: day.breakStart || "12:00",
@@ -135,7 +115,28 @@ export default function PsychSchedule() {
 
     setSessionDuration(apiSchedule.sessionDurationMinutes || 60);
     setSchedule(newSchedule);
-  };
+  }, []);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await userService.getMyProfile();
+        const typedProfile = profile as (Patient | Psychologist) & { id?: string };
+        if (typedProfile.id) {
+          setPsychologistId(typedProfile.id);
+          try {
+            const scheduleData = await userService.getPsychologistSchedule(typedProfile.id);
+            loadScheduleFromApi(scheduleData);
+          } catch {
+            console.log("No hay agenda guardada, usando valores por defecto");
+          }
+        }
+      } catch {
+        console.error("Error loading psychologist profile");
+      }
+    };
+    loadProfile();
+  }, [loadScheduleFromApi]);
 
   const getModalityIcon = (modality: string) => {
     switch (modality) {
@@ -211,7 +212,7 @@ export default function PsychSchedule() {
 
   const transformScheduleToApi = () => {
     const days = Object.entries(schedule)
-      .filter(([_, dayData]) => dayData.enabled)
+      .filter(([, dayData]) => dayData.enabled)
       .map(([dayKey, dayData]) => ({
         dayOfWeek: dayKeyToDayOfWeek(dayKey),
         enabled: true,
@@ -246,8 +247,8 @@ export default function PsychSchedule() {
       await userService.updatePsychologistSchedule(psychologistId, scheduleData);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Error al guardar la agenda";
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Error al guardar la agenda";
       setError(errorMessage);
       console.error("Error saving schedule:", err);
     } finally {
@@ -435,10 +436,10 @@ export default function PsychSchedule() {
                       Selecciona modalidad para agregar slots:
                     </label>
                     <div className="flex gap-3">
-                      {["VideoConferencia", "Presencial", "Chat"].map((mod) => (
+                      {(["VideoConferencia", "Presencial", "Chat"] as const).map((mod) => (
                         <button
                           key={mod}
-                          onClick={() => setSelectedModality(mod as any)}
+                          onClick={() => setSelectedModality(mod)}
                           className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors"
                           style={{
                             background: selectedModality === mod ? TEAL : "white",
@@ -499,10 +500,10 @@ export default function PsychSchedule() {
                             <div className="absolute left-0 top-full mt-2 w-32 bg-white rounded-lg shadow-lg border z-50 p-2 hidden group-hover:block" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
                               <p className="text-xs text-slate-600 font-semibold mb-2">Cambiar modalidad:</p>
                               <div className="flex flex-col gap-1">
-                                {["VideoConferencia", "Presencial", "Chat"].map((mod) => (
+                                {(["VideoConferencia", "Presencial", "Chat"] as const).map((mod) => (
                                   <button
                                     key={mod}
-                                    onClick={() => updateSlotModality(selectedDay, slot, mod as any)}
+                                    onClick={() => updateSlotModality(selectedDay, slot, mod)}
                                     className="flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-slate-100 transition-colors"
                                     style={{ color: slotData?.modality === mod ? TEAL : "#4a6572" }}
                                   >
