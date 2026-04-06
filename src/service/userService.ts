@@ -6,8 +6,8 @@ export const userService = {
   // ========================
   // Autenticación
   // ========================
-  register: async (userData: any) => {
-    const response = await api.post('/user/auth/register', userData);
+  register: async <TRequest extends object, TResponse = unknown>(userData: TRequest): Promise<TResponse> => {
+    const response = await api.post<TResponse>('/user/auth/register', userData);
     return response.data;
   },
 
