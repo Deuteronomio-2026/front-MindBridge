@@ -2,6 +2,28 @@
 import api from './api';
 import type { Patient, Psychologist } from '../types/user';
 
+export type Modality = "VideoConferencia" | "Presencial" | "Chat";
+
+export type PsychScheduleSlot = {
+  time: string;
+  status: "AVAILABLE" | "BOOKED" | "DISABLED";
+  modality: Modality;
+};
+
+export type PsychScheduleDay = {
+  dayOfWeek: string;
+  enabled: boolean;
+  breakStart: string;
+  breakEnd: string;
+  slots: PsychScheduleSlot[];
+};
+
+export type PsychologistSchedule = {
+  timeZone: string;
+  sessionDurationMinutes: number;
+  days: PsychScheduleDay[];
+};
+
 export const userService = {
   // ========================
   // Pacientes
@@ -85,5 +107,21 @@ export const userService = {
     } else {
       throw new Error('Rol no soportado para actualización');
     }
+  },
+
+  // ========================
+  // Horarios de Psicólogos
+  // ========================
+  getPsychologistSchedule: async (id: string): Promise<PsychologistSchedule> => {
+    const response = await api.get(`/user/psychologists/${id}/schedule`);
+    return response.data;
+  },
+
+  updatePsychologistSchedule: async (
+    id: string,
+    scheduleData: PsychologistSchedule
+  ): Promise<PsychologistSchedule> => {
+    const response = await api.put(`/user/psychologists/${id}/schedule`, scheduleData);
+    return response.data;
   },
 };
