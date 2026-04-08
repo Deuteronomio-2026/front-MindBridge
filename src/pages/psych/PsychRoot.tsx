@@ -5,6 +5,7 @@ import {
   Bell, ChevronDown, LogOut, Settings, Sparkles
 } from "lucide-react";
 import { UserProvider } from "../../context/UserProvider";
+import { useRealUser } from "../../hooks/useRealUser";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -33,8 +34,12 @@ export default function PsychRoot() {
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { profile, loading } = useRealUser();
 
   const unreadCount = mockNotifications.filter((n) => !n.read).length;
+  const fullName = profile ? `${profile.name} ${profile.lastName || ""}`.trim() : "Usuario";
+  const displayName = fullName.split(" ")[0] || "Usuario";
+  const displayInitial = fullName.charAt(0).toUpperCase() || "U";
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) return location.pathname === href;
@@ -124,9 +129,9 @@ export default function PsychRoot() {
                   onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
                 >
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "#C8E8DF" }}>
-                    <span style={{ color: SAGE, fontSize: "0.75rem", fontWeight: 700 }}>S</span>
+                    <span style={{ color: SAGE, fontSize: "0.75rem", fontWeight: 700 }}>{loading ? "..." : displayInitial}</span>
                   </div>
-                  <span className="hidden sm:block" style={{ color: "#2d4a5a", fontSize: "0.875rem", fontWeight: 500 }}>Dra. Sofía</span>
+                  <span className="hidden sm:block" style={{ color: "#2d4a5a", fontSize: "0.875rem", fontWeight: 500 }}>{loading ? "Cargando..." : displayName}</span>
                   <ChevronDown size={14} className="text-slate-400" />
                 </button>
                 {profileOpen && (
@@ -140,7 +145,11 @@ export default function PsychRoot() {
                     </button>
                     <div className="border-t my-1" style={{ borderColor: "rgba(26,74,92,0.08)" }} />
                     <button className="w-full px-4 py-2.5 text-left flex items-center gap-2 hover:bg-slate-50 transition-colors" style={{ fontSize: "0.875rem", color: "#4a6572" }}
-                      onClick={() => navigate("/auth")}>
+                      onClick={() => {
+                        localStorage.removeItem("accessToken");
+                        localStorage.removeItem("refreshToken");
+                        navigate("/auth");
+                      }}>
                       <LogOut size={15} className="text-slate-400" /> Salir
                     </button>
                   </div>
