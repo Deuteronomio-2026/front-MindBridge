@@ -15,7 +15,6 @@ import {
   VideoOff,
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
-import * as mediasoupClient from "mediasoup-client";
 import { useUser } from "../../hooks/useUser";
 
 type ChatMessage = {
@@ -37,6 +36,10 @@ type MessageHistoryItem = {
   senderId: string;
   content: string;
   timestamp?: string;
+};
+
+const RTC_CONFIGURATION: RTCConfiguration = {
+  iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
 };
 
 const VIDEO_BACKEND_URL =
@@ -65,6 +68,20 @@ function formatDuration(seconds: number) {
     .padStart(2, "0");
   const ss = (seconds % 60).toString().padStart(2, "0");
   return `${mm}:${ss}`;
+}
+
+function getInitials(label: string) {
+  const parts = label
+    .split(/[^a-zA-Z0-9]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) {
+    return "U";
+  }
+
+  return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
 function RemoteVideoTile({ stream, muted = false }: { stream: MediaStream; muted?: boolean }) {
@@ -105,14 +122,10 @@ export default function ChatSession() {
   const [seconds, setSeconds] = useState(0);
   const [isJoining, setIsJoining] = useState(false);
   const [remoteStreamsVersion, setRemoteStreamsVersion] = useState(0);
-  const [selectedMainUserId, setSelectedMainUserId] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
-  const deviceRef = useRef<mediasoupClient.types.Device | null>(null);
-  const sendTransportRef = useRef<mediasoupClient.types.Transport | null>(null);
-  const recvTransportRef = useRef<mediasoupClient.types.Transport | null>(null);
-  const producersRef = useRef<Map<string, mediasoupClient.types.Producer>>(new Map());
-  const consumersRef = useRef<Map<string, mediasoupClient.types.Consumer>>(new Map());
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
@@ -240,9 +253,17 @@ export default function ChatSession() {
       localStreamRef.current.addTrack(track);
       attachLocalPreview(localStreamRef.current);
 
-      const existingProducer = producersRef.current.get(kind);
-      if (existingProducer) {
-        await existingProducer.replaceTrack({ track });
+      for (const peerConnection of peerConnectionsRef.current.values()) {
+        const sender = peerConnection
+          .getSenders()
+          .find((candidateSender) => candidateSender.track?.kind === kind);
+
+        if (sender) {
+          await sender.replaceTrack(track);
+          continue;
+        }
+
+        peerConnection.addTrack(track, localStreamRef.current);
       }
 
       return true;
@@ -275,27 +296,11 @@ export default function ChatSession() {
     socketRef.current?.disconnect();
     socketRef.current = null;
 
-    // Cerrar productores
-    for (const producer of producersRef.current.values()) {
-      producer.close();
+    for (const peerConnection of peerConnectionsRef.current.values()) {
+      peerConnection.close();
     }
-    producersRef.current.clear();
-
-    // Cerrar consumidores
-    for (const consumer of consumersRef.current.values()) {
-      consumer.close();
-    }
-    consumersRef.current.clear();
-
-    // Cerrar transportes
-    if (sendTransportRef.current) {
-      sendTransportRef.current.close();
-      sendTransportRef.current = null;
-    }
-    if (recvTransportRef.current) {
-      recvTransportRef.current.close();
-      recvTransportRef.current = null;
-    }
+    peerConnectionsRef.current.clear();
+    pendingCandidatesRef.current.clear();
 
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -317,150 +322,128 @@ export default function ChatSession() {
     startedRef.current = false;
   };
 
-  const createTransports = async () => {
-    if (!socketRef.current || !deviceRef.current) {
+  const createPeerConnection = (remoteUserId: string) => {
+    const existing = peerConnectionsRef.current.get(remoteUserId);
+    if (existing) {
+      return existing;
+    }
+
+    const peerConnection = new RTCPeerConnection(RTC_CONFIGURATION);
+    peerConnectionsRef.current.set(remoteUserId, peerConnection);
+
+    if (localStreamRef.current) {
+      for (const track of localStreamRef.current.getTracks()) {
+        peerConnection.addTrack(track, localStreamRef.current);
+      }
+    }
+
+    peerConnection.onicecandidate = (event) => {
+      if (!event.candidate || !socketRef.current) {
+        return;
+      }
+
+      socketRef.current.emit("webrtc:ice-candidate", {
+        roomId,
+        targetUserId: remoteUserId,
+        senderId: selfUserId,
+        candidate: event.candidate.toJSON(),
+      });
+    };
+
+    peerConnection.ontrack = (event) => {
+      const baseStream = remoteStreamsRef.current.get(remoteUserId) || new MediaStream();
+      const incomingStream = event.streams?.[0];
+
+      event.track.onmute = () => {
+        setRemoteStreamsVersion((value) => value + 1);
+      };
+      event.track.onunmute = () => {
+        setRemoteStreamsVersion((value) => value + 1);
+      };
+      event.track.onended = () => {
+        setRemoteStreamsVersion((value) => value + 1);
+      };
+
+      if (incomingStream) {
+        remoteStreamsRef.current.set(remoteUserId, incomingStream);
+      } else if (!baseStream.getTracks().some((track) => track.id === event.track.id)) {
+        baseStream.addTrack(event.track);
+        remoteStreamsRef.current.set(remoteUserId, baseStream);
+      }
+
+      setRemoteStreamsVersion((value) => value + 1);
+      setStatus("Llamada conectada");
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+      if (peerConnection.connectionState === "failed") {
+        setStatus("Problema de conexion de video/audio");
+      }
+    };
+
+    return peerConnection;
+  };
+
+  const flushPendingCandidates = async (remoteUserId: string) => {
+    const peerConnection = peerConnectionsRef.current.get(remoteUserId);
+    if (!peerConnection || !peerConnection.remoteDescription) {
       return;
     }
 
-    try {
-      // Crear transporte para enviar
-      const sendTransportData = await new Promise<any>((resolve, reject) => {
-        socketRef.current!.emit(
-          "mediasoup:create-transport",
-          { roomId, userId: selfUserId },
-          (response: any) => {
-            if (response.error) {
-              reject(new Error(response.error));
-            } else {
-              resolve(response);
-            }
-          }
-        );
-      });
+    const pending = pendingCandidatesRef.current.get(remoteUserId) || [];
+    if (pending.length === 0) {
+      return;
+    }
 
-      const sendTransport = deviceRef.current!.createSendTransport(sendTransportData);
-      sendTransportRef.current = sendTransport;
-
-      sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-        socketRef.current!.emit(
-          "mediasoup:connect-transport",
-          { roomId, dtlsParameters },
-          (response: any) => {
-            if (response.error) {
-              errback(new Error(response.error));
-            } else {
-              callback();
-            }
-          }
-        );
-      });
-
-      sendTransport.on("produce", async ({ kind, rtpParameters }, callback, errback) => {
-        socketRef.current!.emit(
-          "mediasoup:produce",
-          { roomId, userId: selfUserId, kind, rtpParameters },
-          (response: any) => {
-            if (response.error) {
-              errback(new Error(response.error));
-            } else {
-              callback({ id: response.id });
-            }
-          }
-        );
-      });
-
-      // Producir audio y video
-      if (localStreamRef.current) {
-        for (const track of localStreamRef.current.getTracks()) {
-          try {
-            const producer = await sendTransport.produce({
-              track,
-              encodings: track.kind === "audio" ? undefined : [{ maxBitrate: 1000000 }],
-            });
-            producersRef.current.set(track.kind, producer);
-            console.log(`Productor creado: ${track.kind}`);
-          } catch (error) {
-            console.error(`Error creando productor para ${track.kind}:`, error);
-          }
-        }
-      }
-
-      // Crear transporte para recibir
-      const recvTransportData = await new Promise<any>((resolve, reject) => {
-        socketRef.current!.emit(
-          "mediasoup:create-transport",
-          { roomId, userId: selfUserId },
-          (response: any) => {
-            if (response.error) {
-              reject(new Error(response.error));
-            } else {
-              resolve(response);
-            }
-          }
-        );
-      });
-
-      const recvTransport = deviceRef.current!.createRecvTransport(recvTransportData);
-      recvTransportRef.current = recvTransport;
-
-      recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-        socketRef.current!.emit(
-          "mediasoup:connect-transport",
-          { roomId, dtlsParameters },
-          (response: any) => {
-            if (response.error) {
-              errback(new Error(response.error));
-            } else {
-              callback();
-            }
-          }
-        );
-      });
-
-      setStatus("Transportes creados, publicando medios...");
-    } catch (error) {
-      console.error("Error creando transportes:", error);
-      setStatus(`Error en transportes: ${error instanceof Error ? error.message : "Desconocido"}`);
+    pendingCandidatesRef.current.delete(remoteUserId);
+    for (const candidate of pending) {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     }
   };
 
-  const subscribeToProducer = async (producerId: string, kind: string, remoteUserId: string) => {
-    if (!socketRef.current || !deviceRef.current || !recvTransportRef.current) {
+  const maybeStartOffer = async (remoteUserId: string) => {
+    if (remoteUserId === selfUserId || !socketRef.current) {
       return;
     }
 
-    try {
-      const consumerData = await new Promise<any>((resolve, reject) => {
-        socketRef.current!.emit(
-          "mediasoup:consume",
-          {
-            roomId,
-            userId: selfUserId,
-            producerId,
-            rtpCapabilities: deviceRef.current!.rtpCapabilities,
-          },
-          (response: any) => {
-            if (response.error) {
-              reject(new Error(response.error));
-            } else {
-              resolve(response);
-            }
-          }
-        );
-      });
+    // Solo un lado inicia oferta para evitar glare simultaneo.
+    if (selfUserId.localeCompare(remoteUserId) <= 0) {
+      return;
+    }
 
-      const consumer = await recvTransportRef.current.consume(consumerData);
-      consumersRef.current.set(consumerData.id, consumer);
+    const peerConnection = createPeerConnection(remoteUserId);
+    if (peerConnection.signalingState !== "stable") {
+      return;
+    }
 
-      const stream = remoteStreamsRef.current.get(remoteUserId) || new MediaStream();
-      stream.addTrack(consumer.track);
-      remoteStreamsRef.current.set(remoteUserId, stream);
-      setRemoteStreamsVersion((v) => v + 1);
+    const offer = await peerConnection.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
+    await peerConnection.setLocalDescription(offer);
 
-      setStatus("Llamada conectada");
-      console.log(`Consumidor creado para ${kind}`);
-    } catch (error) {
-      console.error(`Error consumiendo productor:`, error);
+    socketRef.current.emit("webrtc:offer", {
+      roomId,
+      targetUserId: remoteUserId,
+      senderId: selfUserId,
+      sdp: offer,
+    });
+  };
+
+  const closePeerForUser = (remoteUserId: string) => {
+    const peerConnection = peerConnectionsRef.current.get(remoteUserId);
+    if (peerConnection) {
+      peerConnection.close();
+      peerConnectionsRef.current.delete(remoteUserId);
+    }
+
+    pendingCandidatesRef.current.delete(remoteUserId);
+
+    const stream = remoteStreamsRef.current.get(remoteUserId);
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      remoteStreamsRef.current.delete(remoteUserId);
+      setRemoteStreamsVersion((value) => value + 1);
     }
   };
 
@@ -494,29 +477,7 @@ export default function ChatSession() {
 
       socketRef.current = socket;
 
-      // 3. Inicializar dispositivo Mediasoup
-      const device = new mediasoupClient.Device();
-      deviceRef.current = device;
-
-      // 4. Obtener RTP Capabilities del router servidor
-      const rtpCapabilitiesData = await new Promise<{ rtpCapabilities: any }>((resolve, reject) => {
-        socket.emit(
-          "mediasoup:get-router-rtp-capabilities",
-          { roomId },
-          (response: any) => {
-            if (response.error) {
-              reject(new Error(response.error));
-            } else {
-              resolve(response);
-            }
-          }
-        );
-      });
-
-      await device.load({ routerRtpCapabilities: rtpCapabilitiesData.rtpCapabilities });
-      setStatus("Dispositivo Mediasoup cargado");
-
-      // 5. Unirse a la sala
+      // 3. Unirse a la sala
       const handleSocketConnected = () => {
         if (startedRef.current) {
           return;
@@ -541,9 +502,6 @@ export default function ChatSession() {
           userId: selfUserId,
           role: selfRole,
         });
-
-        // Crear transportes
-        createTransports();
       };
 
       socket.on("connect", handleSocketConnected);
@@ -571,6 +529,115 @@ export default function ChatSession() {
         setParticipants(payload.participants || []);
       });
 
+      socket.on("webrtc:existing-participants", async (payload: { participants: RoomParticipant[] }) => {
+        const roomParticipants = payload.participants || [];
+        if (roomParticipants.length > 0) {
+          setParticipants((previous) => {
+            const merged = new Map(previous.map((item) => [item.userId, item]));
+            for (const participant of roomParticipants) {
+              merged.set(participant.userId, participant);
+            }
+            return Array.from(merged.values());
+          });
+        }
+
+        for (const participant of roomParticipants) {
+          await maybeStartOffer(participant.userId);
+        }
+      });
+
+      socket.on("webrtc:user-joined", async (payload: { user?: RoomParticipant }) => {
+        const joinedUser = payload.user;
+        if (!joinedUser || joinedUser.userId === selfUserId) {
+          return;
+        }
+
+        setParticipants((previous) => {
+          if (previous.some((participant) => participant.userId === joinedUser.userId)) {
+            return previous;
+          }
+          return [...previous, joinedUser];
+        });
+
+        await maybeStartOffer(joinedUser.userId);
+      });
+
+      socket.on("webrtc:user-left", (payload: { userId?: string }) => {
+        const remoteUserId = payload.userId;
+        if (!remoteUserId) {
+          return;
+        }
+
+        closePeerForUser(remoteUserId);
+      });
+
+      socket.on("webrtc:offer", async (payload: { senderId: string; sdp: RTCSessionDescriptionInit }) => {
+        const remoteUserId = payload.senderId;
+        if (!remoteUserId || remoteUserId === selfUserId || !socketRef.current) {
+          return;
+        }
+
+        const peerConnection = createPeerConnection(remoteUserId);
+
+        if (peerConnection.signalingState !== "stable") {
+          try {
+            await peerConnection.setLocalDescription({ type: "rollback" });
+          } catch {
+            closePeerForUser(remoteUserId);
+          }
+        }
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        await flushPendingCandidates(remoteUserId);
+
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        socketRef.current.emit("webrtc:answer", {
+          roomId,
+          targetUserId: remoteUserId,
+          senderId: selfUserId,
+          sdp: answer,
+        });
+      });
+
+      socket.on("webrtc:answer", async (payload: { senderId: string; sdp: RTCSessionDescriptionInit }) => {
+        const remoteUserId = payload.senderId;
+        const peerConnection = peerConnectionsRef.current.get(remoteUserId);
+
+        if (!peerConnection || !payload.sdp) {
+          return;
+        }
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        await flushPendingCandidates(remoteUserId);
+      });
+
+      socket.on("webrtc:ice-candidate", async (payload: { senderId: string; candidate?: RTCIceCandidateInit }) => {
+        const remoteUserId = payload.senderId;
+        const candidate = payload.candidate;
+
+        if (!remoteUserId || !candidate) {
+          return;
+        }
+
+        const peerConnection = createPeerConnection(remoteUserId);
+        if (!peerConnection.remoteDescription) {
+          const pending = pendingCandidatesRef.current.get(remoteUserId) || [];
+          pending.push(candidate);
+          pendingCandidatesRef.current.set(remoteUserId, pending);
+          return;
+        }
+
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      });
+
+      socket.on("webrtc:error", (payload: { message?: string }) => {
+        if (payload?.message) {
+          setStatus(payload.message);
+        }
+      });
+
       socket.on(
         "chat:receive-message",
         (payload: { messageId?: string; senderId: string; content: string }) => {
@@ -585,22 +652,6 @@ export default function ChatSession() {
           ]);
         }
       );
-
-      socket.on("mediasoup:producer-added", async (payload: { userId: string; kind: string; producerId: string }) => {
-        console.log(`Producer agregado: ${payload.userId} (${payload.kind})`);
-        // Subscribir a este productor
-        await subscribeToProducer(payload.producerId, payload.kind, payload.userId);
-      });
-
-      socket.on("mediasoup:new-producer", async (payload: { producerId: string; kind: string; userId: string }) => {
-        console.log(`Nuevo productor: ${payload.userId} (${payload.kind})`);
-        // Subscribir a este productor si el dispositivo puede
-        try {
-          await subscribeToProducer(payload.producerId, payload.kind, payload.userId);
-        } catch (error) {
-          console.error("Error subscribiendo a productor:", error);
-        }
-      });
 
       await loadRoomHistory();
     } catch (error) {
@@ -678,45 +729,39 @@ export default function ChatSession() {
     setChatInput("");
   };
 
-  const remoteStreamEntries = Array.from(remoteStreamsRef.current.entries());
-  const videoTiles = [
-    ...(localStreamRef.current
-      ? [
-          {
-            userId: selfUserId,
-            stream: localStreamRef.current,
-            isSelf: true,
-            label: `${profile.name} (${selfRole})`,
-          },
-        ]
-      : []),
-    ...remoteStreamEntries.map(([userId, stream]) => {
-      const participant = participants.find((p) => p.userId === userId);
-      return {
-        userId,
-        stream,
-        isSelf: false,
-        label: participant ? `${participant.userId} (${participant.role})` : userId,
-      };
-    }),
+  const participantRoster = [
+    { userId: selfUserId, role: selfRole },
+    ...participants.filter((participant) => participant.userId !== selfUserId),
   ];
 
-  const defaultMainUserId = videoTiles.find((tile) => !tile.isSelf)?.userId || videoTiles[0]?.userId || null;
-  const activeMainUserId =
-    selectedMainUserId && videoTiles.some((tile) => tile.userId === selectedMainUserId)
-      ? selectedMainUserId
-      : defaultMainUserId;
-  const mainVideoTile = videoTiles.find((tile) => tile.userId === activeMainUserId) || null;
-  const thumbnailTiles = videoTiles.filter((tile) => tile.userId !== activeMainUserId);
-  const remoteConnected = remoteStreamEntries.length > 0;
-  const psychologistPresentInRoom =
-    selfRole === "psicologo" || participants.some((participant) => participant.role === "psicologo");
+  const videoTiles = participantRoster.map((participant) => {
+    const stream = participant.userId === selfUserId
+      ? localStreamRef.current
+      : remoteStreamsRef.current.get(participant.userId) || null;
 
-  useEffect(() => {
-    if (activeMainUserId !== selectedMainUserId) {
-      setSelectedMainUserId(activeMainUserId);
-    }
-  }, [activeMainUserId, selectedMainUserId]);
+    const videoTrack = stream?.getVideoTracks().find((track) => track.readyState === "live") || null;
+    const audioTrack = stream?.getAudioTracks().find((track) => track.readyState === "live") || null;
+
+    return {
+      userId: participant.userId,
+      role: participant.role,
+      stream,
+      isSelf: participant.userId === selfUserId,
+      label:
+        participant.userId === selfUserId
+          ? `${profile.name} (${selfRole})`
+          : `${participant.userId} (${participant.role})`,
+      hasVideo: Boolean(videoTrack && videoTrack.enabled),
+      hasAudio: Boolean(audioTrack && audioTrack.enabled),
+      initials: getInitials(participant.userId === selfUserId ? profile.name : participant.userId),
+    };
+  });
+
+  const gridColumnsClass = videoTiles.length <= 1
+    ? "grid-cols-1"
+    : videoTiles.length <= 4
+      ? "grid-cols-1 md:grid-cols-2"
+      : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
 
   if (stage === "lobby") {
     return (
@@ -907,70 +952,57 @@ export default function ChatSession() {
               </div>
             </div>
 
-            {mainVideoTile && (
-              <div key={remoteStreamsVersion} className="w-full h-full p-2">
-                <div className="relative w-full h-full rounded-2xl overflow-hidden bg-black/30">
-                  <RemoteVideoTile stream={mainVideoTile.stream} muted={mainVideoTile.isSelf} />
-                  <div className="absolute left-2 bottom-2 px-2 py-1 rounded-md text-xs bg-black/45">
-                    {mainVideoTile.label}
-                  </div>
-                  <div className="absolute right-2 top-2 px-2 py-1 rounded-md text-xs bg-black/45">
-                    Camara principal
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!remoteConnected && !psychologistPresentInRoom && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <div key={remoteStreamsVersion} className={`grid ${gridColumnsClass} gap-2 h-full p-2 pb-20 overflow-y-auto`}>
+              {videoTiles.map((tile) => (
                 <div
-                  className="w-20 h-20 rounded-full flex items-center justify-center"
-                  style={{ background: "rgba(255,255,255,0.09)" }}
+                  key={tile.userId}
+                  className="relative rounded-2xl overflow-hidden border min-h-[180px]"
+                  style={{
+                    background: "linear-gradient(145deg, #171f39 0%, #232f55 100%)",
+                    borderColor: "rgba(255,255,255,0.12)",
+                  }}
                 >
-                  <span style={{ fontSize: 28, fontWeight: 700 }}>
-                    {partnerName.charAt(0) || "P"}
-                  </span>
-                </div>
-                <p style={{ opacity: 0.75 }}>{partnerName}</p>
-                <p className="text-sm" style={{ opacity: 0.55 }}>
-                  {stage === "connecting"
-                    ? "Conectando con la sala..."
-                    : "Esperando al otro participante"}
-                </p>
-              </div>
-            )}
-
-            {thumbnailTiles.length > 0 && (
-              <div className="absolute left-3 right-3 bottom-20 z-20">
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {thumbnailTiles.map((tile) => (
-                    <button
-                      key={tile.userId}
-                      type="button"
-                      onClick={() => setSelectedMainUserId(tile.userId)}
-                      className="relative w-40 h-24 rounded-xl overflow-hidden border shrink-0"
+                  {tile.stream && tile.hasVideo ? (
+                    <RemoteVideoTile stream={tile.stream} muted={tile.isSelf} />
+                  ) : (
+                    <div
+                      className="w-full h-full flex items-center justify-center"
                       style={{
-                        background: "#202844",
-                        borderColor: "rgba(255,255,255,0.25)",
+                        background:
+                          "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.06) 45%, rgba(12,18,40,0.55) 100%)",
                       }}
                     >
-                      <RemoteVideoTile stream={tile.stream} muted={tile.isSelf} />
-                      {!cameraOn && tile.isSelf && (
-                        <div
-                          className="absolute inset-0 flex items-center justify-center"
-                          style={{ background: "#141a2f" }}
-                        >
-                          <VideoOff size={16} />
-                        </div>
-                      )}
-                      <div className="absolute left-1.5 bottom-1 text-[11px] px-1.5 py-0.5 rounded bg-black/45">
-                        {tile.label}
+                      <div
+                        className="w-28 h-28 rounded-full flex items-center justify-center text-4xl"
+                        style={{
+                          background: "rgba(255,255,255,0.2)",
+                          color: "#ffe6db",
+                          fontWeight: 800,
+                          boxShadow: "0 10px 24px rgba(7, 11, 34, 0.24)",
+                        }}
+                      >
+                        {tile.initials}
                       </div>
-                    </button>
-                  ))}
+                    </div>
+                  )}
+
+                  <div className="absolute left-3 bottom-3 px-2 py-1 rounded-md text-xs bg-black/55">
+                    {tile.label}
+                  </div>
+
+                  <div className="absolute right-3 bottom-3 px-2 py-1 rounded-md text-[11px] bg-black/55 flex items-center gap-2">
+                    {tile.hasAudio ? <Mic size={13} /> : <MicOff size={13} />}
+                    {tile.hasVideo ? <Video size={13} /> : <VideoOff size={13} />}
+                  </div>
+
+                  {tile.isSelf && (
+                    <div className="absolute right-3 top-3 px-2 py-1 rounded-md text-[11px] bg-black/55">
+                      Tu vista
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
 
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 z-20">
               <button
