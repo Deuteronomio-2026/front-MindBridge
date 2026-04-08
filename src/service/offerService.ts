@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://videochat-sfu-app.azurewebsites.net/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://videochat-sfu-git-04071730.azurewebsites.net/api";
 
 export interface Offer {
     id: string;

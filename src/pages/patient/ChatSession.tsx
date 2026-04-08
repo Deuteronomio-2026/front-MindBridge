@@ -41,7 +41,7 @@ type MessageHistoryItem = {
 
 const VIDEO_BACKEND_URL =
   import.meta.env.VITE_VIDEOCHAT_BACKEND_URL ||
-  "https://videochat-sfu-app.azurewebsites.net";
+  "https://videochat-sfu-git-04071730.azurewebsites.net";
 
 function toUserId(name: string) {
   return name
