@@ -38,6 +38,19 @@ type MessageHistoryItem = {
   timestamp?: string;
 };
 
+type PeerDebugState = {
+  connectionState: RTCPeerConnectionState;
+  iceConnectionState: RTCIceConnectionState;
+  iceGatheringState: RTCIceGatheringState;
+  signalingState: RTCSignalingState;
+  inboundVideoTracks: number;
+  inboundAudioTracks: number;
+  outboundVideoTracks: number;
+  outboundAudioTracks: number;
+  pendingCandidates: number;
+  lastEvent: string;
+};
+
 const RTC_CONFIGURATION: RTCConfiguration = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
 };
@@ -122,10 +135,14 @@ export default function ChatSession() {
   const [seconds, setSeconds] = useState(0);
   const [isJoining, setIsJoining] = useState(false);
   const [remoteStreamsVersion, setRemoteStreamsVersion] = useState(0);
+  const [debugByPeer, setDebugByPeer] = useState<Record<string, PeerDebugState>>({});
 
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const makingOfferRef = useRef<Map<string, boolean>>(new Map());
+  const ignoreOfferRef = useRef<Map<string, boolean>>(new Map());
+  const settingRemoteAnswerPendingRef = useRef<Map<string, boolean>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
@@ -290,6 +307,30 @@ export default function ChatSession() {
     }
   };
 
+  const getDebugSnapshot = (peerConnection: RTCPeerConnection, remoteUserId: string, lastEvent: string): PeerDebugState => {
+    const receivers = peerConnection.getReceivers();
+    const senders = peerConnection.getSenders();
+    return {
+      connectionState: peerConnection.connectionState,
+      iceConnectionState: peerConnection.iceConnectionState,
+      iceGatheringState: peerConnection.iceGatheringState,
+      signalingState: peerConnection.signalingState,
+      inboundVideoTracks: receivers.filter((receiver) => receiver.track?.kind === "video").length,
+      inboundAudioTracks: receivers.filter((receiver) => receiver.track?.kind === "audio").length,
+      outboundVideoTracks: senders.filter((sender) => sender.track?.kind === "video").length,
+      outboundAudioTracks: senders.filter((sender) => sender.track?.kind === "audio").length,
+      pendingCandidates: (pendingCandidatesRef.current.get(remoteUserId) || []).length,
+      lastEvent,
+    };
+  };
+
+  const updatePeerDebug = (remoteUserId: string, peerConnection: RTCPeerConnection, lastEvent: string) => {
+    setDebugByPeer((previous) => ({
+      ...previous,
+      [remoteUserId]: getDebugSnapshot(peerConnection, remoteUserId, lastEvent),
+    }));
+  };
+
   const teardownCall = () => {
     socketRef.current?.emit("chat:leave-room", { roomId, userId: selfUserId });
     socketRef.current?.emit("webrtc:leave-room", { roomId, userId: selfUserId });
@@ -301,6 +342,10 @@ export default function ChatSession() {
     }
     peerConnectionsRef.current.clear();
     pendingCandidatesRef.current.clear();
+    makingOfferRef.current.clear();
+    ignoreOfferRef.current.clear();
+    settingRemoteAnswerPendingRef.current.clear();
+    setDebugByPeer({});
 
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -330,6 +375,9 @@ export default function ChatSession() {
 
     const peerConnection = new RTCPeerConnection(RTC_CONFIGURATION);
     peerConnectionsRef.current.set(remoteUserId, peerConnection);
+    makingOfferRef.current.set(remoteUserId, false);
+    ignoreOfferRef.current.set(remoteUserId, false);
+    settingRemoteAnswerPendingRef.current.set(remoteUserId, false);
 
     if (localStreamRef.current) {
       for (const track of localStreamRef.current.getTracks()) {
@@ -348,6 +396,24 @@ export default function ChatSession() {
         senderId: selfUserId,
         candidate: event.candidate.toJSON(),
       });
+
+      updatePeerDebug(remoteUserId, peerConnection, "local ICE candidate enviado");
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      updatePeerDebug(remoteUserId, peerConnection, "iceConnectionState cambiado");
+    };
+
+    peerConnection.onicegatheringstatechange = () => {
+      updatePeerDebug(remoteUserId, peerConnection, "iceGatheringState cambiado");
+    };
+
+    peerConnection.onsignalingstatechange = () => {
+      updatePeerDebug(remoteUserId, peerConnection, "signalingState cambiado");
+    };
+
+    peerConnection.onnegotiationneeded = () => {
+      void maybeStartOffer(remoteUserId, "negotiationneeded");
     };
 
     peerConnection.ontrack = (event) => {
@@ -356,12 +422,15 @@ export default function ChatSession() {
 
       event.track.onmute = () => {
         setRemoteStreamsVersion((value) => value + 1);
+        updatePeerDebug(remoteUserId, peerConnection, `track remoto ${event.track.kind} mute`);
       };
       event.track.onunmute = () => {
         setRemoteStreamsVersion((value) => value + 1);
+        updatePeerDebug(remoteUserId, peerConnection, `track remoto ${event.track.kind} unmute`);
       };
       event.track.onended = () => {
         setRemoteStreamsVersion((value) => value + 1);
+        updatePeerDebug(remoteUserId, peerConnection, `track remoto ${event.track.kind} ended`);
       };
 
       if (incomingStream) {
@@ -373,13 +442,18 @@ export default function ChatSession() {
 
       setRemoteStreamsVersion((value) => value + 1);
       setStatus("Llamada conectada");
+      updatePeerDebug(remoteUserId, peerConnection, `track remoto ${event.track.kind} recibido`);
     };
 
     peerConnection.onconnectionstatechange = () => {
       if (peerConnection.connectionState === "failed") {
         setStatus("Problema de conexion de video/audio");
       }
+
+      updatePeerDebug(remoteUserId, peerConnection, "connectionState cambiado");
     };
+
+    updatePeerDebug(remoteUserId, peerConnection, "peer creado");
 
     return peerConnection;
   };
@@ -401,33 +475,48 @@ export default function ChatSession() {
     }
   };
 
-  const maybeStartOffer = async (remoteUserId: string) => {
+  const maybeStartOffer = async (remoteUserId: string, reason = "retry") => {
     if (remoteUserId === selfUserId || !socketRef.current) {
       return;
     }
 
-    // Solo un lado inicia oferta para evitar glare simultaneo.
-    if (selfUserId.localeCompare(remoteUserId) <= 0) {
+    const isMakingOffer = makingOfferRef.current.get(remoteUserId) === true;
+    if (isMakingOffer) {
       return;
     }
 
     const peerConnection = createPeerConnection(remoteUserId);
     if (peerConnection.signalingState !== "stable") {
+      updatePeerDebug(remoteUserId, peerConnection, `offer omitida (${reason}) por signaling=${peerConnection.signalingState}`);
       return;
     }
 
-    const offer = await peerConnection.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
-    });
-    await peerConnection.setLocalDescription(offer);
+    try {
+      makingOfferRef.current.set(remoteUserId, true);
 
-    socketRef.current.emit("webrtc:offer", {
-      roomId,
-      targetUserId: remoteUserId,
-      senderId: selfUserId,
-      sdp: offer,
-    });
+      const offer = await peerConnection.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
+
+      if (peerConnection.signalingState !== "stable") {
+        updatePeerDebug(remoteUserId, peerConnection, `offer cancelada (${reason}) por signaling intermedio`);
+        return;
+      }
+
+      await peerConnection.setLocalDescription(offer);
+
+      socketRef.current.emit("webrtc:offer", {
+        roomId,
+        targetUserId: remoteUserId,
+        senderId: selfUserId,
+        sdp: peerConnection.localDescription,
+      });
+
+      updatePeerDebug(remoteUserId, peerConnection, `offer enviada (${reason})`);
+    } finally {
+      makingOfferRef.current.set(remoteUserId, false);
+    }
   };
 
   const closePeerForUser = (remoteUserId: string) => {
@@ -438,6 +527,15 @@ export default function ChatSession() {
     }
 
     pendingCandidatesRef.current.delete(remoteUserId);
+    makingOfferRef.current.delete(remoteUserId);
+    ignoreOfferRef.current.delete(remoteUserId);
+    settingRemoteAnswerPendingRef.current.delete(remoteUserId);
+
+    setDebugByPeer((previous) => {
+      const next = { ...previous };
+      delete next[remoteUserId];
+      return next;
+    });
 
     const stream = remoteStreamsRef.current.get(remoteUserId);
     if (stream) {
@@ -446,6 +544,41 @@ export default function ChatSession() {
       setRemoteStreamsVersion((value) => value + 1);
     }
   };
+
+  useEffect(() => {
+    if (stage !== "live") {
+      return;
+    }
+
+    const retryTimer = window.setInterval(() => {
+      for (const participant of participants) {
+        if (participant.userId === selfUserId) {
+          continue;
+        }
+
+        const stream = remoteStreamsRef.current.get(participant.userId) || null;
+        const hasRemoteVideo = Boolean(
+          stream?.getVideoTracks().some((track) => track.readyState === "live" && track.enabled)
+        );
+        const peerConnection = peerConnectionsRef.current.get(participant.userId) || null;
+
+        if (
+          peerConnection &&
+          ["failed", "closed", "disconnected"].includes(peerConnection.connectionState)
+        ) {
+          closePeerForUser(participant.userId);
+        }
+
+        if (!hasRemoteVideo) {
+          void maybeStartOffer(participant.userId, "interval retry sin video remoto");
+        }
+      }
+    }, 3000);
+
+    return () => {
+      window.clearInterval(retryTimer);
+    };
+  }, [participants, remoteStreamsVersion, selfUserId, stage]);
 
   const joinCall = async () => {
     if (startedRef.current || isJoining) {
@@ -472,7 +605,7 @@ export default function ChatSession() {
 
       // 2. Conectar Socket.IO
       const socket = io(VIDEO_BACKEND_URL, {
-        transports: ["websocket"],
+        transports: ["websocket", "polling"],
       });
 
       socketRef.current = socket;
@@ -491,25 +624,13 @@ export default function ChatSession() {
             : "Conectado. Esperando al otro participante..."
         );
 
-        socket.emit("chat:join-room", {
-          roomId,
-          userId: selfUserId,
-          role: selfRole,
-        });
-
+        // Un solo evento de union evita condiciones de carrera/duplicados en el backend.
         socket.emit("webrtc:join-room", {
           roomId,
           userId: selfUserId,
           role: selfRole,
         });
       };
-
-      socket.on("connect", handleSocketConnected);
-
-      // Si el socket se conectó antes de registrar el listener, forzamos el flujo de unión.
-      if (socket.connected) {
-        handleSocketConnected();
-      }
 
       socket.on("disconnect", () => {
         setStatus("Desconectado");
@@ -522,11 +643,21 @@ export default function ChatSession() {
       });
 
       socket.on("chat:participants", (payload: { participants: RoomParticipant[] }) => {
-        setParticipants(payload.participants || []);
+        const roomParticipants = payload.participants || [];
+        setParticipants(roomParticipants);
+
+        for (const participant of roomParticipants) {
+          void maybeStartOffer(participant.userId);
+        }
       });
 
       socket.on("webrtc:participants", (payload: { participants: RoomParticipant[] }) => {
-        setParticipants(payload.participants || []);
+        const roomParticipants = payload.participants || [];
+        setParticipants(roomParticipants);
+
+        for (const participant of roomParticipants) {
+          void maybeStartOffer(participant.userId);
+        }
       });
 
       socket.on("webrtc:existing-participants", async (payload: { participants: RoomParticipant[] }) => {
@@ -571,37 +702,73 @@ export default function ChatSession() {
         closePeerForUser(remoteUserId);
       });
 
-      socket.on("webrtc:offer", async (payload: { senderId: string; sdp: RTCSessionDescriptionInit }) => {
+      socket.on(
+        "webrtc:offer",
+        async (payload: { senderId: string; targetUserId?: string; sdp: RTCSessionDescriptionInit }) => {
+        if (payload.targetUserId && payload.targetUserId !== selfUserId) {
+          return;
+        }
+
         const remoteUserId = payload.senderId;
-        if (!remoteUserId || remoteUserId === selfUserId || !socketRef.current) {
+        if (!remoteUserId || remoteUserId === selfUserId || !socketRef.current || !payload.sdp) {
           return;
         }
 
         const peerConnection = createPeerConnection(remoteUserId);
 
-        if (peerConnection.signalingState !== "stable") {
-          try {
-            await peerConnection.setLocalDescription({ type: "rollback" });
-          } catch {
-            closePeerForUser(remoteUserId);
-          }
+        const isPolite = selfUserId.localeCompare(remoteUserId) < 0;
+        const isMakingOffer = makingOfferRef.current.get(remoteUserId) === true;
+        const isSettingRemoteAnswerPending =
+          settingRemoteAnswerPendingRef.current.get(remoteUserId) === true;
+        const readyForOffer =
+          !isMakingOffer &&
+          (peerConnection.signalingState === "stable" || isSettingRemoteAnswerPending);
+        const offerCollision = !readyForOffer;
+        const ignoreOffer = !isPolite && offerCollision;
+        ignoreOfferRef.current.set(remoteUserId, ignoreOffer);
+
+        if (ignoreOffer) {
+          updatePeerDebug(remoteUserId, peerConnection, "offer ignorada por collision (impolite)");
+          return;
         }
 
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        await flushPendingCandidates(remoteUserId);
+        try {
+          if (offerCollision) {
+            await peerConnection.setLocalDescription({ type: "rollback" });
+            updatePeerDebug(remoteUserId, peerConnection, "rollback local por collision de offer");
+          }
 
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          await flushPendingCandidates(remoteUserId);
 
-        socketRef.current.emit("webrtc:answer", {
-          roomId,
-          targetUserId: remoteUserId,
-          senderId: selfUserId,
-          sdp: answer,
-        });
-      });
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
 
-      socket.on("webrtc:answer", async (payload: { senderId: string; sdp: RTCSessionDescriptionInit }) => {
+          socketRef.current.emit("webrtc:answer", {
+            roomId,
+            targetUserId: remoteUserId,
+            senderId: selfUserId,
+            sdp: peerConnection.localDescription,
+          });
+
+          updatePeerDebug(remoteUserId, peerConnection, "answer enviada");
+        } catch (error) {
+          updatePeerDebug(
+            remoteUserId,
+            peerConnection,
+            `error procesando offer: ${error instanceof Error ? error.message : "desconocido"}`
+          );
+        }
+        }
+      );
+
+      socket.on(
+        "webrtc:answer",
+        async (payload: { senderId: string; targetUserId?: string; sdp: RTCSessionDescriptionInit }) => {
+        if (payload.targetUserId && payload.targetUserId !== selfUserId) {
+          return;
+        }
+
         const remoteUserId = payload.senderId;
         const peerConnection = peerConnectionsRef.current.get(remoteUserId);
 
@@ -609,11 +776,30 @@ export default function ChatSession() {
           return;
         }
 
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        await flushPendingCandidates(remoteUserId);
-      });
+        try {
+          settingRemoteAnswerPendingRef.current.set(remoteUserId, true);
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          await flushPendingCandidates(remoteUserId);
+          updatePeerDebug(remoteUserId, peerConnection, "answer aplicada");
+        } catch (error) {
+          updatePeerDebug(
+            remoteUserId,
+            peerConnection,
+            `error aplicando answer: ${error instanceof Error ? error.message : "desconocido"}`
+          );
+        } finally {
+          settingRemoteAnswerPendingRef.current.set(remoteUserId, false);
+        }
+        }
+      );
 
-      socket.on("webrtc:ice-candidate", async (payload: { senderId: string; candidate?: RTCIceCandidateInit }) => {
+      socket.on(
+        "webrtc:ice-candidate",
+        async (payload: { senderId: string; targetUserId?: string; candidate?: RTCIceCandidateInit }) => {
+        if (payload.targetUserId && payload.targetUserId !== selfUserId) {
+          return;
+        }
+
         const remoteUserId = payload.senderId;
         const candidate = payload.candidate;
 
@@ -626,11 +812,22 @@ export default function ChatSession() {
           const pending = pendingCandidatesRef.current.get(remoteUserId) || [];
           pending.push(candidate);
           pendingCandidatesRef.current.set(remoteUserId, pending);
+          updatePeerDebug(remoteUserId, peerConnection, "ICE remoto en cola (sin remoteDescription)");
           return;
         }
 
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-      });
+        try {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          updatePeerDebug(remoteUserId, peerConnection, "ICE remoto aplicado");
+        } catch (error) {
+          updatePeerDebug(
+            remoteUserId,
+            peerConnection,
+            `error aplicando ICE: ${error instanceof Error ? error.message : "desconocido"}`
+          );
+        }
+        }
+      );
 
       socket.on("webrtc:error", (payload: { message?: string }) => {
         if (payload?.message) {
@@ -652,6 +849,13 @@ export default function ChatSession() {
           ]);
         }
       );
+
+      socket.on("connect", handleSocketConnected);
+
+      // Si el socket se conectó antes de registrar listeners, forzamos el flujo al final.
+      if (socket.connected) {
+        handleSocketConnected();
+      }
 
       await loadRoomHistory();
     } catch (error) {
@@ -762,6 +966,8 @@ export default function ChatSession() {
     : videoTiles.length <= 4
       ? "grid-cols-1 md:grid-cols-2"
       : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
+
+  const debugRows = Object.entries(debugByPeer);
 
   if (stage === "lobby") {
     return (
@@ -1039,6 +1245,48 @@ export default function ChatSession() {
                 <PhoneOff size={22} />
               </button>
             </div>
+
+            {stage === "live" && (
+              <div
+                className="absolute top-3 right-3 z-20 w-[360px] max-w-[90vw] rounded-xl border p-2"
+                style={{
+                  background: "rgba(8, 12, 28, 0.72)",
+                  borderColor: "rgba(255,255,255,0.16)",
+                  backdropFilter: "blur(6px)",
+                }}
+              >
+                <p className="text-[11px]" style={{ opacity: 0.82 }}>
+                  Debug WebRTC
+                </p>
+                <div className="mt-1 max-h-[210px] overflow-y-auto space-y-1.5">
+                  {debugRows.length === 0 && (
+                    <p className="text-[11px]" style={{ opacity: 0.7 }}>
+                      Sin peers aun...
+                    </p>
+                  )}
+                  {debugRows.map(([peerId, peerDebug]) => (
+                    <div
+                      key={peerId}
+                      className="rounded-lg px-2 py-1.5"
+                      style={{ background: "rgba(255,255,255,0.07)" }}
+                    >
+                      <p className="text-[11px]" style={{ fontWeight: 700 }}>
+                        {peerId}
+                      </p>
+                      <p className="text-[10px]" style={{ opacity: 0.82 }}>
+                        conn={peerDebug.connectionState} | ice={peerDebug.iceConnectionState} | signal={peerDebug.signalingState}
+                      </p>
+                      <p className="text-[10px]" style={{ opacity: 0.82 }}>
+                        in(v/a)={peerDebug.inboundVideoTracks}/{peerDebug.inboundAudioTracks} | out(v/a)={peerDebug.outboundVideoTracks}/{peerDebug.outboundAudioTracks} | pendingICE={peerDebug.pendingCandidates}
+                      </p>
+                      <p className="text-[10px]" style={{ opacity: 0.7 }}>
+                        {peerDebug.lastEvent}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
