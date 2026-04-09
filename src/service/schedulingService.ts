@@ -1,11 +1,13 @@
 import api from "./api";
 import type { Appointment } from "../types/user";
+import { userService, type Modality as ScheduleModality, type PsychologistSchedule } from "./userService";
 
 export type SchedulingRole = "PATIENT" | "PSYCHOLOGIST";
 
 export interface SlotStatus {
   time: string;
   available: boolean;
+  modality: "video" | "presencial" | "chat";
 }
 
 export interface CreateAppointmentRequest {
@@ -57,7 +59,9 @@ const toHourMinute = (value: unknown): string => {
     return value.split("T")[1]?.slice(0, 5) ?? "09:00";
   }
 
-  return value.slice(0, 5);
+  const raw = value.slice(0, 5);
+  const [hourText = "09", minuteText = "00"] = raw.split(":");
+  return `${String(Number(hourText)).padStart(2, "0")}:${String(Number(minuteText)).padStart(2, "0")}`;
 };
 
 const normalizeModality = (value: unknown): Appointment["modality"] => {
@@ -99,6 +103,30 @@ const modalityToBackendType = (modality: Appointment["modality"]): string => {
 
 const sessionTypeToBackend = (sessionType: Appointment["sessionType"]): string => {
   return sessionType === "primera" ? "PRIMERA_VEZ" : "SEGUIMIENTO";
+};
+
+const modalityToSchedule = (modality?: Appointment["modality"]): ScheduleModality | undefined => {
+  if (!modality) return undefined;
+  if (modality === "video") return "VideoConferencia";
+  if (modality === "presencial") return "Presencial";
+  return "Chat";
+};
+
+const scheduleToModality = (modality: ScheduleModality): Appointment["modality"] => {
+  if (modality === "Presencial") return "presencial";
+  if (modality === "Chat") return "chat";
+  return "video";
+};
+
+const weekdayToScheduleDay = (date: string): string => {
+  const jsDay = new Date(`${date}T00:00:00`).getDay();
+  const map = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
+  return map[jsDay] ?? "";
+};
+
+const findScheduleDay = (schedule: PsychologistSchedule, date: string) => {
+  const targetDay = weekdayToScheduleDay(date);
+  return schedule.days.find((day) => String(day.dayOfWeek).toUpperCase() === targetDay);
 };
 
 const getCurrentUserId = async (): Promise<string> => {
@@ -163,23 +191,39 @@ export const schedulingService = {
   async getAvailability(
     psychologistId: string,
     date: string,
-    _modality?: Appointment["modality"],
+    modality?: Appointment["modality"],
     _sessionType?: Appointment["sessionType"]
   ): Promise<SlotStatus[]> {
-    const response = await api.get("/sessions");
-    const sessions = (response.data as BackendSession[]).filter(
-      (s) => s.psychologistId === psychologistId && s.date === date && !String(s.status).toUpperCase().includes("CANCEL")
+    const [sessionsResponse, schedule] = await Promise.all([
+      api.get("/sessions"),
+      userService.getPsychologistSchedule(psychologistId),
+    ]);
+
+    const sessions = (sessionsResponse.data as BackendSession[]).filter(
+      (s) => s.psychologistId === psychologistId && toIsoDate(s.date) === date && !String(s.status).toUpperCase().includes("CANCEL")
     );
 
     const bookedByTime = new Set(sessions.map((s) => toHourMinute(s.startTime)));
+    const day = findScheduleDay(schedule, date);
+    const requestedModality = modalityToSchedule(modality);
 
-    const slots: SlotStatus[] = [];
-    for (let hour = 9; hour <= 18; hour++) {
-      const time = `${hour}:00`;
-      slots.push({ time, available: !bookedByTime.has(time) });
+    if (!day || !day.enabled) {
+      return [];
     }
 
-    return slots;
+    return day.slots
+      .filter((slot) => slot.status !== "DISABLED")
+      .filter((slot) => (requestedModality ? slot.modality === requestedModality : true))
+      .map((slot) => {
+        const normalizedTime = toHourMinute(slot.time);
+        const isSelectable = slot.status === "AVAILABLE" && !bookedByTime.has(normalizedTime);
+        return {
+          time: normalizedTime,
+          available: isSelectable,
+          modality: scheduleToModality(slot.modality),
+        };
+      })
+      .sort((a, b) => a.time.localeCompare(b.time));
   },
 
   async createAppointment(payload: CreateAppointmentRequest): Promise<SchedulingAppointment> {
