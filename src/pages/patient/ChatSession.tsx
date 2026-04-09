@@ -1,5 +1,5 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Circle,
@@ -59,13 +59,20 @@ const VIDEO_BACKEND_URL =
   import.meta.env.VITE_VIDEOCHAT_BACKEND_URL ||
   "https://videochat-sfu-git-04071730.azurewebsites.net";
 
-function toUserId(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .toLowerCase();
+function getOrCreateOpaqueUserId() {
+  const storageKey = "videochat.opaque-user-id";
+  const storedId = window.localStorage.getItem(storageKey);
+  if (storedId) {
+    return storedId;
+  }
+
+  const generatedId =
+    typeof window.crypto?.randomUUID === "function"
+      ? window.crypto.randomUUID()
+      : `user-${Math.random().toString(36).slice(2, 12)}`;
+
+  window.localStorage.setItem(storageKey, generatedId);
+  return generatedId;
 }
 
 function formatTimeLabel(date = new Date()) {
@@ -97,6 +104,14 @@ function getInitials(label: string) {
   return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
+function dedupeParticipants(participants: RoomParticipant[]) {
+  const uniqueByUserId = new Map<string, RoomParticipant>();
+  for (const participant of participants) {
+    uniqueByUserId.set(participant.userId, participant);
+  }
+  return Array.from(uniqueByUserId.values());
+}
+
 function RemoteVideoTile({ stream, muted = false }: { stream: MediaStream; muted?: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -107,7 +122,7 @@ function RemoteVideoTile({ stream, muted = false }: { stream: MediaStream; muted
 
     videoRef.current.srcObject = stream;
     void videoRef.current.play().catch(() => {
-      // autoplay puede bloquearse hasta interacci├│n del usuario
+      // Autoplay may be blocked until user interaction.
     });
   }, [stream]);
 
@@ -121,8 +136,8 @@ export default function ChatSession() {
 
   const appointment = appointments.find((a) => a.id === id);
   const roomId = appointment?.id || `room-${id || "demo"}`;
-  const selfRole = profile.role || "paciente";
-  const selfUserId = `${toUserId(profile.email || profile.name || "user") || "user"}-${selfRole}`;
+  const selfRole: RoomParticipant["role"] = "paciente";
+  const selfUserId = useMemo(() => getOrCreateOpaqueUserId(), []);
 
   const [stage, setStage] = useState<CallStage>("lobby");
   const [micOn, setMicOn] = useState(true);
@@ -144,7 +159,6 @@ export default function ChatSession() {
   const ignoreOfferRef = useRef<Map<string, boolean>>(new Map());
   const settingRemoteAnswerPendingRef = useRef<Map<string, boolean>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const endMessagesRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef(false);
@@ -156,6 +170,8 @@ export default function ChatSession() {
 
   const partnerPhoto = appointment?.psychologistPhoto || "";
   const stageIsLive = stage === "live";
+  const showDebugOverlay =
+    import.meta.env.DEV || import.meta.env.VITE_ENABLE_WEBRTC_DEBUG === "true";
 
   useEffect(() => {
     endMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -175,28 +191,6 @@ export default function ChatSession() {
       }
     };
   }, [stageIsLive]);
-
-  useEffect(() => {
-    return () => {
-      teardownCall();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (stage === "lobby") {
-      return;
-    }
-
-    const localVideo = localVideoRef.current;
-    if (!localVideo || !localStreamRef.current) {
-      return;
-    }
-
-    localVideo.srcObject = localStreamRef.current;
-    void localVideo.play().catch(() => {
-      // Algunos navegadores bloquean autoplay hasta interacci├│n expl├¡cita.
-    });
-  }, [stage]);
 
   const loadRoomHistory = async () => {
     try {
@@ -223,22 +217,8 @@ export default function ChatSession() {
           };
         })
       );
-    } catch {
-      
-    }
-  };
-
-  const attachLocalPreview = (stream: MediaStream | null) => {
-    const localVideo = localVideoRef.current;
-    if (!localVideo) {
-      return;
-    }
-
-    localVideo.srcObject = stream;
-    if (stream) {
-      void localVideo.play().catch(() => {
-        
-      });
+    } catch (error) {
+      console.warn("No se pudo cargar el historial de chat.", error);
     }
   };
 
@@ -268,7 +248,6 @@ export default function ChatSession() {
       }
 
       localStreamRef.current.addTrack(track);
-      attachLocalPreview(localStreamRef.current);
 
       for (const peerConnection of peerConnectionsRef.current.values()) {
         const sender = peerConnection
@@ -331,7 +310,7 @@ export default function ChatSession() {
     }));
   };
 
-  const teardownCall = () => {
+  const teardownCall = useCallback(() => {
     socketRef.current?.emit("chat:leave-room", { roomId, userId: selfUserId });
     socketRef.current?.emit("webrtc:leave-room", { roomId, userId: selfUserId });
     socketRef.current?.disconnect();
@@ -350,10 +329,6 @@ export default function ChatSession() {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
 
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-
     for (const stream of remoteStreamsRef.current.values()) {
       stream.getTracks().forEach((track) => track.stop());
     }
@@ -365,7 +340,13 @@ export default function ChatSession() {
     setStage("lobby");
     setSeconds(0);
     startedRef.current = false;
-  };
+  }, [roomId, selfUserId]);
+
+  useEffect(() => {
+    return () => {
+      teardownCall();
+    };
+  }, [teardownCall]);
 
   const createPeerConnection = (remoteUserId: string) => {
     const existing = peerConnectionsRef.current.get(remoteUserId);
@@ -545,6 +526,9 @@ export default function ChatSession() {
     }
   };
 
+  const maybeStartOfferRef = useRef(maybeStartOffer);
+  maybeStartOfferRef.current = maybeStartOffer;
+
   useEffect(() => {
     if (stage !== "live") {
       return;
@@ -570,7 +554,7 @@ export default function ChatSession() {
         }
 
         if (!hasRemoteVideo) {
-          void maybeStartOffer(participant.userId, "interval retry sin video remoto");
+          void maybeStartOfferRef.current(participant.userId, "interval retry sin video remoto");
         }
       }
     }, 3000);
@@ -596,11 +580,7 @@ export default function ChatSession() {
       if (!localStreamRef.current) {
         setMicOn(false);
         setCameraOn(false);
-        setStatus("Sin acceso a c├ímara/micr├│fono. Entraras en modo escucha.");
-      }
-
-      if (localVideoRef.current) {
-        attachLocalPreview(localStreamRef.current);
+        setStatus("Sin acceso a camara/microfono. Entraras en modo escucha.");
       }
 
       // 2. Conectar Socket.IO
@@ -620,7 +600,7 @@ export default function ChatSession() {
         setStage("live");
         setStatus((prev) =>
           prev.includes("Sin acceso")
-            ? "Conectado sin c├ímara/micr├│fono. Esperando al otro participante..."
+            ? "Conectado sin camara/microfono. Esperando al otro participante..."
             : "Conectado. Esperando al otro participante..."
         );
 
@@ -643,7 +623,7 @@ export default function ChatSession() {
       });
 
       socket.on("chat:participants", (payload: { participants: RoomParticipant[] }) => {
-        const roomParticipants = payload.participants || [];
+        const roomParticipants = dedupeParticipants(payload.participants || []);
         setParticipants(roomParticipants);
 
         for (const participant of roomParticipants) {
@@ -652,7 +632,7 @@ export default function ChatSession() {
       });
 
       socket.on("webrtc:participants", (payload: { participants: RoomParticipant[] }) => {
-        const roomParticipants = payload.participants || [];
+        const roomParticipants = dedupeParticipants(payload.participants || []);
         setParticipants(roomParticipants);
 
         for (const participant of roomParticipants) {
@@ -852,7 +832,7 @@ export default function ChatSession() {
 
       socket.on("connect", handleSocketConnected);
 
-      // Si el socket se conect├│ antes de registrar listeners, forzamos el flujo al final.
+      // If socket connected before listener registration, force the join flow.
       if (socket.connected) {
         handleSocketConnected();
       }
@@ -902,10 +882,6 @@ export default function ChatSession() {
     localStreamRef.current?.getVideoTracks().forEach((track) => {
       track.enabled = next;
     });
-
-    if (next) {
-      attachLocalPreview(localStreamRef.current);
-    }
   };
 
   const sendMessage = () => {
@@ -933,10 +909,18 @@ export default function ChatSession() {
     setChatInput("");
   };
 
-  const participantRoster = [
-    { userId: selfUserId, role: selfRole },
-    ...participants.filter((participant) => participant.userId !== selfUserId),
-  ];
+  const participantRoster = useMemo(() => {
+    const rosterByUserId = new Map<string, RoomParticipant>();
+    rosterByUserId.set(selfUserId, { userId: selfUserId, role: selfRole });
+
+    for (const participant of participants) {
+      if (participant.userId !== selfUserId) {
+        rosterByUserId.set(participant.userId, participant);
+      }
+    }
+
+    return Array.from(rosterByUserId.values());
+  }, [participants, selfRole, selfUserId]);
 
   const videoTiles = participantRoster.map((participant) => {
     const stream = participant.userId === selfUserId
@@ -1228,8 +1212,11 @@ export default function ChatSession() {
               </button>
 
               <button
+                type="button"
+                disabled
+                title="Compartir pantalla (proximamente)"
                 className="w-12 h-12 rounded-full flex items-center justify-center"
-                style={{ background: "#2f375a" }}
+                style={{ background: "#2f375a", opacity: 0.6, cursor: "not-allowed" }}
               >
                 <ScreenShare size={20} />
               </button>
@@ -1246,7 +1233,7 @@ export default function ChatSession() {
               </button>
             </div>
 
-            {stage === "live" && (
+            {stage === "live" && showDebugOverlay && (
               <div
                 className="absolute top-3 right-3 z-20 w-[360px] max-w-[90vw] rounded-xl border p-2"
                 style={{
@@ -1299,8 +1286,7 @@ export default function ChatSession() {
           </div>
 
           <div className="p-3 flex-1 overflow-y-auto space-y-2">
-            {[{ userId: selfUserId, role: selfRole }, ...participants.filter((p) => p.userId !== selfUserId)].map(
-              (member) => (
+            {participantRoster.map((member) => (
                 <div
                   key={member.userId}
                   className="px-3 py-2 rounded-lg flex items-center justify-between"
@@ -1319,8 +1305,7 @@ export default function ChatSession() {
                   </div>
                   <Circle size={10} fill="#6ee7b7" color="#6ee7b7" />
                 </div>
-              )
-            )}
+              ))}
           </div>
 
           <div className="px-3 pb-3">
@@ -1389,7 +1374,7 @@ export default function ChatSession() {
         <span style={{ marginRight: 8 }}>
           {stageIsLive ? <Phone size={14} /> : null}
         </span>
-        En llamada {formatDuration(seconds)} ┬À {status}
+        En llamada {formatDuration(seconds)} | {status}
       </div>
     </div>
   );
