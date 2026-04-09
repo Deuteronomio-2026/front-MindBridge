@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router";
 import {
-  ArrowLeft, ArrowRight, Video, Users,
+  ArrowLeft, ArrowRight, Video, Users, MessageCircle,
   Check, Clock, RefreshCw, Calendar, UserPlus, RotateCcw
 } from "lucide-react";
 import { StarRating } from "../../components/StarRating";
@@ -14,7 +14,7 @@ const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
 
 type SessionType = "primera" | "seguimiento";
-type Modality = "video" | "presencial";
+type Modality = "video" | "presencial" | "chat";
 
 // Definimos el tipo para el psicólogo que espera Booking
 interface PsychologistBooking {
@@ -29,17 +29,9 @@ interface PsychologistBooking {
   prices: {
     video: number;
     presencial: number;
+    chat: number;
   };
 }
-
-// Generar horarios de ejemplo (9:00 a 18:00, cada hora)
-const generateTimeSlots = (): string[] => {
-  const slots: string[] = [];
-  for (let i = 9; i <= 18; i++) {
-    slots.push(`${i}:00`);
-  }
-  return slots;
-};
 
 export default function Booking() {
   const { id } = useParams();
@@ -68,6 +60,7 @@ export default function Booking() {
         prices: {
           video: 150,
           presencial: 200,
+          chat: 120,
         },
       });
       setLoading(false);
@@ -94,10 +87,14 @@ export default function Booking() {
     return d;
   });
 
-  const allTimeSlots = generateTimeSlots();
   const [availabilityCache, setAvailabilityCache] = useState<Record<string, SlotStatus[]>>({});
 
-  const dateToKey = (date: Date): string => date.toISOString().split("T")[0];
+  const dateToKey = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     const fetchAvailability = async () => {
@@ -149,21 +146,14 @@ export default function Booking() {
   }
 
   const getDaySlots = (date: Date): SlotStatus[] => {
-    if (!modality || !sessionType) {
-      return allTimeSlots.map((time) => ({ time, available: false }));
-    }
+    if (!modality || !sessionType) return [];
 
     const key = `${dateToKey(date)}-${modality}-${sessionType}`;
     const cached = availabilityCache[key];
 
-    if (!cached) {
-      return allTimeSlots.map((time) => ({ time, available: false }));
-    }
+    if (!cached) return [];
 
-    return allTimeSlots.map((time) => {
-      const slot = cached.find((s) => s.time === time);
-      return { time, available: Boolean(slot?.available) };
-    });
+    return cached.filter((slot) => slot.modality === modality);
   };
 
   const modalityOptions = [
@@ -184,6 +174,15 @@ export default function Booking() {
       color: SAGE,
       bg: "#E8F5F1",
       desc: `En el consultorio · ${psychologist.location}`,
+    },
+    {
+      key: "chat" as Modality,
+      label: "Chat",
+      icon: MessageCircle,
+      price: psychologist.prices.chat,
+      color: "#0EA5E9",
+      bg: "#F0F9FF",
+      desc: "Mensajes en tiempo real",
     },
   ];
 
@@ -244,7 +243,7 @@ export default function Booking() {
             </div>
             {[
               { label: "Tipo de sesión", value: sessionType === "primera" ? "Primera sesión" : "Sesión de seguimiento" },
-                { label: "Modalidad", value: modality === "video" ? "Videollamada" : "Presencial" },
+                { label: "Modalidad", value: modality === "video" ? "Videollamada" : modality === "presencial" ? "Presencial" : "Chat" },
               { label: "Fecha", value: selectedDate ? formatDate(selectedDate) : "" },
               { label: "Hora", value: selectedTime || "" },
               { label: "Precio", value: `$${psychologist.prices[modality!]} USD` },
@@ -382,7 +381,7 @@ export default function Booking() {
             <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>Cada modalidad tiene un precio diferente.</p>
             <div className="flex flex-col gap-4 mb-8">
               {modalityOptions.map((opt) => (
-                <button key={opt.key} onClick={() => setModality(opt.key)} className="p-5 rounded-2xl border-2 text-left transition-all flex items-center gap-4" style={{ borderColor: modality === opt.key ? TEAL : "rgba(26,74,92,0.15)", background: modality === opt.key ? FOG : "white" }}>
+                <button key={opt.key} onClick={() => { setModality(opt.key); setSelectedDate(null); setSelectedTime(null); }} className="p-5 rounded-2xl border-2 text-left transition-all flex items-center gap-4" style={{ borderColor: modality === opt.key ? TEAL : "rgba(26,74,92,0.15)", background: modality === opt.key ? FOG : "white" }}>
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: opt.bg }}>
                     <opt.icon size={22} style={{ color: opt.color }} />
                   </div>
@@ -457,14 +456,22 @@ export default function Booking() {
                   </p>
                   <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>Actualizado {lastUpdated.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</p>
                 </div>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                  {getDaySlots(selectedDate).map(({ time, available }) => (
-                    <button key={time} disabled={!available} onClick={() => setSelectedTime(time)} className="py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: !available ? "rgba(26,74,92,0.06)" : selectedTime === time ? TEAL : "rgba(26,74,92,0.18)", background: !available ? "#f8fafc" : selectedTime === time ? TEAL : "white", color: !available ? "#cbd5e1" : selectedTime === time ? "white" : "#334155", cursor: !available ? "not-allowed" : "pointer", fontWeight: selectedTime === time ? 700 : 500, fontSize: "0.875rem" }}>
-                      {time}
-                      {!available && <span className="block text-slate-300" style={{ fontSize: "0.65rem" }}>Ocupado</span>}
-                    </button>
-                  ))}
-                </div>
+                {getDaySlots(selectedDate).length === 0 ? (
+                  <div className="text-center py-8 bg-white rounded-2xl border border-dashed" style={{ borderColor: "rgba(26,74,92,0.2)" }}>
+                    <p className="text-slate-400" style={{ fontSize: "0.875rem" }}>
+                      El psicólogo no tiene horarios configurados para esta fecha y modalidad.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                    {getDaySlots(selectedDate).map(({ time, available }) => (
+                      <button key={time} disabled={!available} onClick={() => setSelectedTime(time)} className="py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: !available ? "rgba(26,74,92,0.06)" : selectedTime === time ? TEAL : "rgba(26,74,92,0.18)", background: !available ? "#f8fafc" : selectedTime === time ? TEAL : "white", color: !available ? "#cbd5e1" : selectedTime === time ? "white" : "#334155", cursor: !available ? "not-allowed" : "pointer", fontWeight: selectedTime === time ? 700 : 500, fontSize: "0.875rem" }}>
+                        {time}
+                        {!available && <span className="block text-slate-300" style={{ fontSize: "0.65rem" }}>Ocupado</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {!selectedDate && (
@@ -501,7 +508,7 @@ export default function Booking() {
             <div className="bg-white rounded-2xl p-5 border shadow-sm mb-4" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
               {[
                 { label: "Tipo de sesión", value: sessionType === "primera" ? "Primera sesión" : "Sesión de seguimiento" },
-                { label: "Modalidad", value: modality === "video" ? "Videollamada" : "Presencial" },
+                { label: "Modalidad", value: modality === "video" ? "Videollamada" : modality === "presencial" ? "Presencial" : "Chat" },
                 { label: "Fecha", value: selectedDate ? formatDate(selectedDate) : "" },
                 { label: "Hora", value: selectedTime ? `${selectedTime} hrs` : "" },
               ].map((item) => (
