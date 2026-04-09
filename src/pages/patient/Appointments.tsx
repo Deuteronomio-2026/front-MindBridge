@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Calendar, Video, Users, MessageCircle, Clock, XCircle, CheckCircle, AlertCircle, Plus } from "lucide-react";
-import { useUser } from "../../hooks/useUser";
 import type { Appointment } from "../../types/user";
+import { schedulingService, type SchedulingAppointment } from "../../service/schedulingService";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -171,8 +171,37 @@ function AppointmentCard({ appointment, onCancel }: { appointment: Appointment; 
 
 export default function Appointments() {
   const navigate = useNavigate();
-  const { appointments, cancelAppointment } = useUser();
+  const [appointments, setAppointments] = useState<SchedulingAppointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"upcoming" | "completed" | "cancelled">("upcoming");
+
+  useEffect(() => {
+    const loadAppointments = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const list = await schedulingService.getMyAppointments("PATIENT");
+        setAppointments(list);
+      } catch {
+        setError("No se pudieron cargar tus citas.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAppointments();
+  }, []);
+
+  const cancelAppointment = async (id: string) => {
+    try {
+      await schedulingService.cancelAppointment(id);
+      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status: "cancelled" } : a)));
+    } catch {
+      setError("No se pudo cancelar la cita.");
+    }
+  };
 
   const upcoming = appointments.filter((a) => a.status === "upcoming");
   const completed = appointments.filter((a) => a.status === "completed");
@@ -225,6 +254,12 @@ export default function Appointments() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700" style={{ fontSize: "0.85rem" }}>
+            {error}
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex bg-white rounded-xl p-1 shadow-sm border mb-6" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
           {(Object.keys(tabData) as Array<keyof typeof tabData>).map((tab) => (
@@ -258,7 +293,11 @@ export default function Appointments() {
         </div>
 
         {/* Appointment list */}
-        {currentAppointments.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-16 bg-white rounded-2xl border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
+            <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>Cargando citas...</p>
+          </div>
+        ) : currentAppointments.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-2xl border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: FOG }}>
               {activeTab === "upcoming" ? (

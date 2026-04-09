@@ -4,8 +4,8 @@ import {
   ArrowLeft, ArrowRight, Video, Users, MessageCircle,
   Check, Clock, RefreshCw, Calendar, UserPlus, RotateCcw
 } from "lucide-react";
-import { useUser } from "../../hooks/useUser";
 import { StarRating } from "../../components/StarRating";
+import { schedulingService, type SlotStatus } from "../../service/schedulingService";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -15,11 +15,6 @@ const MINT = "#A8D5C2";
 
 type SessionType = "primera" | "seguimiento";
 type Modality = "video" | "presencial" | "chat";
-
-interface SlotStatus {
-  time: string;
-  available: boolean;
-}
 
 // Definimos el tipo para el psicólogo que espera Booking
 interface PsychologistBooking {
@@ -38,25 +33,10 @@ interface PsychologistBooking {
   };
 }
 
-// Generar horarios de ejemplo (9:00 a 18:00, cada hora)
-const generateTimeSlots = (): string[] => {
-  const slots: string[] = [];
-  for (let i = 9; i <= 18; i++) {
-    slots.push(`${i}:00`);
-  }
-  return slots;
-};
-
-// Generar ocupación aleatoria para simular concurrencia
-const generateRandomBookedSlots = (allSlots: string[]): string[] => {
-  return allSlots.filter(() => Math.random() > 0.6);
-};
-
 export default function Booking() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { addAppointment } = useUser();
 
   // Obtener psicólogo desde el state (enviado desde PsychologistDetail) o por ID (fallback)
   const psychologistFromState = location.state?.psychologist as PsychologistBooking | undefined;
@@ -94,7 +74,9 @@ export default function Booking() {
   const [modality, setModality] = useState<Modality | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
@@ -105,46 +87,44 @@ export default function Booking() {
     return d;
   });
 
-  // Estado de slots ocupados (simulación)
-  const allTimeSlots = generateTimeSlots();
-  const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>(() => {
-    const initial: Record<string, string[]> = {};
-    availableDates.forEach((d) => {
-      initial[d.toDateString()] = generateRandomBookedSlots(allTimeSlots);
-    });
-    return initial;
-  });
+  const [availabilityCache, setAvailabilityCache] = useState<Record<string, SlotStatus[]>>({});
 
-  // Simular actualización en tiempo real cada 30 segundos
+  const dateToKey = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setIsUpdating(true);
-      setTimeout(() => {
-        setBookedSlots((prev) => {
-          const updated = { ...prev };
-          availableDates.forEach((d) => {
-            if (Math.random() > 0.7) {
-              updated[d.toDateString()] = generateRandomBookedSlots(allTimeSlots);
-            }
-          });
-          return updated;
-        });
+    const fetchAvailability = async () => {
+      if (!psychologist || !selectedDate || !modality || !sessionType) return;
+
+      const cacheKey = `${dateToKey(selectedDate)}-${modality}-${sessionType}`;
+      if (availabilityCache[cacheKey]) return;
+
+      setLoadingSlots(true);
+      setBookingError(null);
+
+      try {
+        const slots = await schedulingService.getAvailability(
+          psychologist.id,
+          dateToKey(selectedDate),
+          modality,
+          sessionType
+        );
+        setAvailabilityCache((prev) => ({ ...prev, [cacheKey]: slots }));
         setLastUpdated(new Date());
-        setIsUpdating(false);
-        if (selectedDate && selectedTime) {
-          const key = selectedDate.toDateString();
-          setBookedSlots((prev) => {
-            if (prev[key]?.includes(selectedTime)) {
-              setSelectedTime(null);
-            }
-            return prev;
-          });
-        }
-      }, 600);
-    }, 30000);
-    return () => clearInterval(interval);
+      } catch {
+        setBookingError("No se pudo cargar la disponibilidad. Intenta de nuevo.");
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchAvailability();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, selectedTime]);
+  }, [psychologist, selectedDate, modality, sessionType]);
 
   if (loading) {
     return (
@@ -166,9 +146,14 @@ export default function Booking() {
   }
 
   const getDaySlots = (date: Date): SlotStatus[] => {
-    const key = date.toDateString();
-    const booked = bookedSlots[key] || [];
-    return allTimeSlots.map((time) => ({ time, available: !booked.includes(time) }));
+    if (!modality || !sessionType) return [];
+
+    const key = `${dateToKey(date)}-${modality}-${sessionType}`;
+    const cached = availabilityCache[key];
+
+    if (!cached) return [];
+
+    return cached.filter((slot) => slot.modality === modality);
   };
 
   const modalityOptions = [
@@ -197,27 +182,30 @@ export default function Booking() {
       price: psychologist.prices.chat,
       color: "#0EA5E9",
       bg: "#F0F9FF",
-      desc: "Mensajes de texto en tiempo real",
+      desc: "Mensajes en tiempo real",
     },
   ];
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedDate || !selectedTime || !sessionType || !modality) return;
-    const appointment = {
-      id: `apt-${Date.now()}`,
-      psychologistId: psychologist.id,
-      psychologistName: `${psychologist.title || ""} ${psychologist.name}`.trim(),
-      psychologistPhoto: psychologist.photo,
-      specialty: psychologist.specialties[0],
-      sessionType,
-      modality,
-      date: selectedDate.toISOString().split("T")[0],
-      time: selectedTime,
-      price: psychologist.prices[modality],
-      status: "upcoming" as const,
-    };
-    addAppointment(appointment);
-    setConfirmed(true);
+    setSubmitting(true);
+    setBookingError(null);
+
+    try {
+      await schedulingService.createAppointment({
+        psychologistId: psychologist.id,
+        sessionType,
+        modality,
+        date: dateToKey(selectedDate),
+        time: selectedTime,
+        price: psychologist.prices[modality],
+      });
+      setConfirmed(true);
+    } catch {
+      setBookingError("No fue posible confirmar la cita. Intenta nuevamente.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const steps = [
@@ -255,7 +243,7 @@ export default function Booking() {
             </div>
             {[
               { label: "Tipo de sesión", value: sessionType === "primera" ? "Primera sesión" : "Sesión de seguimiento" },
-              { label: "Modalidad", value: modality === "video" ? "Videollamada" : modality === "presencial" ? "Presencial" : "Chat" },
+                { label: "Modalidad", value: modality === "video" ? "Videollamada" : modality === "presencial" ? "Presencial" : "Chat" },
               { label: "Fecha", value: selectedDate ? formatDate(selectedDate) : "" },
               { label: "Hora", value: selectedTime || "" },
               { label: "Precio", value: `$${psychologist.prices[modality!]} USD` },
@@ -341,6 +329,12 @@ export default function Booking() {
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-8">
+        {bookingError && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700" style={{ fontSize: "0.85rem" }}>
+            {bookingError}
+          </div>
+        )}
+
         {/* Step 1, 2, 3, 4 - sin cambios, ya que son los mismos */}
         {step === 1 && (
           <div>
@@ -387,7 +381,7 @@ export default function Booking() {
             <p className="text-slate-500 mb-7" style={{ fontSize: "0.9rem" }}>Cada modalidad tiene un precio diferente.</p>
             <div className="flex flex-col gap-4 mb-8">
               {modalityOptions.map((opt) => (
-                <button key={opt.key} onClick={() => setModality(opt.key)} className="p-5 rounded-2xl border-2 text-left transition-all flex items-center gap-4" style={{ borderColor: modality === opt.key ? TEAL : "rgba(26,74,92,0.15)", background: modality === opt.key ? FOG : "white" }}>
+                <button key={opt.key} onClick={() => { setModality(opt.key); setSelectedDate(null); setSelectedTime(null); }} className="p-5 rounded-2xl border-2 text-left transition-all flex items-center gap-4" style={{ borderColor: modality === opt.key ? TEAL : "rgba(26,74,92,0.15)", background: modality === opt.key ? FOG : "white" }}>
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: opt.bg }}>
                     <opt.icon size={22} style={{ color: opt.color }} />
                   </div>
@@ -426,8 +420,8 @@ export default function Booking() {
                 <p className="text-slate-500" style={{ fontSize: "0.9rem" }}>Los horarios disponibles se actualizan en tiempo real.</p>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: "#E8F5F1" }}>
-                {isUpdating ? <RefreshCw size={12} style={{ color: SAGE }} className="animate-spin" /> : <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: SAGE }} />}
-                <span style={{ color: SAGE, fontSize: "0.72rem", fontWeight: 600 }}>{isUpdating ? "Actualizando..." : "En vivo"}</span>
+                {loadingSlots ? <RefreshCw size={12} style={{ color: SAGE }} className="animate-spin" /> : <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: SAGE }} />}
+                <span style={{ color: SAGE, fontSize: "0.72rem", fontWeight: 600 }}>{loadingSlots ? "Consultando..." : "Actualizado"}</span>
               </div>
             </div>
             <div className="mb-6">
@@ -439,6 +433,7 @@ export default function Booking() {
                 {availableDates.map((date) => {
                   const slots = getDaySlots(date);
                   const availableCount = slots.filter((s) => s.available).length;
+                  const isLoaded = Boolean(modality && sessionType && availabilityCache[`${dateToKey(date)}-${modality}-${sessionType}`]);
                   const isSelected = selectedDate?.toDateString() === date.toDateString();
                   return (
                     <button key={date.toISOString()} onClick={() => { setSelectedDate(date); setSelectedTime(null); }} className="flex-shrink-0 w-16 py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: isSelected ? TEAL : "rgba(26,74,92,0.2)", background: isSelected ? TEAL : "white" }}>
@@ -446,7 +441,7 @@ export default function Booking() {
                         {date.toLocaleDateString("es-ES", { weekday: "short" }).replace(".", "")}
                       </p>
                       <p style={{ color: isSelected ? "white" : "#1e293b", fontWeight: 800, fontSize: "1.1rem" }}>{date.getDate()}</p>
-                      <p style={{ color: isSelected ? MINT : availableCount > 0 ? SAGE : "#94a3b8", fontSize: "0.65rem" }}>{availableCount > 0 ? `${availableCount} libre${availableCount > 1 ? "s" : ""}` : "lleno"}</p>
+                      <p style={{ color: isSelected ? MINT : availableCount > 0 ? SAGE : "#94a3b8", fontSize: "0.65rem" }}>{!isLoaded ? "--" : availableCount > 0 ? `${availableCount} libre${availableCount > 1 ? "s" : ""}` : "lleno"}</p>
                     </button>
                   );
                 })}
@@ -461,14 +456,22 @@ export default function Booking() {
                   </p>
                   <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>Actualizado {lastUpdated.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</p>
                 </div>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                  {getDaySlots(selectedDate).map(({ time, available }) => (
-                    <button key={time} disabled={!available} onClick={() => setSelectedTime(time)} className="py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: !available ? "rgba(26,74,92,0.06)" : selectedTime === time ? TEAL : "rgba(26,74,92,0.18)", background: !available ? "#f8fafc" : selectedTime === time ? TEAL : "white", color: !available ? "#cbd5e1" : selectedTime === time ? "white" : "#334155", cursor: !available ? "not-allowed" : "pointer", fontWeight: selectedTime === time ? 700 : 500, fontSize: "0.875rem" }}>
-                      {time}
-                      {!available && <span className="block text-slate-300" style={{ fontSize: "0.65rem" }}>Ocupado</span>}
-                    </button>
-                  ))}
-                </div>
+                {getDaySlots(selectedDate).length === 0 ? (
+                  <div className="text-center py-8 bg-white rounded-2xl border border-dashed" style={{ borderColor: "rgba(26,74,92,0.2)" }}>
+                    <p className="text-slate-400" style={{ fontSize: "0.875rem" }}>
+                      El psicólogo no tiene horarios configurados para esta fecha y modalidad.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                    {getDaySlots(selectedDate).map(({ time, available }) => (
+                      <button key={time} disabled={!available} onClick={() => setSelectedTime(time)} className="py-3 rounded-xl border-2 text-center transition-all" style={{ borderColor: !available ? "rgba(26,74,92,0.06)" : selectedTime === time ? TEAL : "rgba(26,74,92,0.18)", background: !available ? "#f8fafc" : selectedTime === time ? TEAL : "white", color: !available ? "#cbd5e1" : selectedTime === time ? "white" : "#334155", cursor: !available ? "not-allowed" : "pointer", fontWeight: selectedTime === time ? 700 : 500, fontSize: "0.875rem" }}>
+                        {time}
+                        {!available && <span className="block text-slate-300" style={{ fontSize: "0.65rem" }}>Ocupado</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {!selectedDate && (
@@ -525,9 +528,9 @@ export default function Booking() {
               <button onClick={() => setStep(3)} className="px-6 py-4 border rounded-xl transition-colors" style={{ borderColor: "rgba(26,74,92,0.2)", color: "#64748b", fontWeight: 600 }}>
                 <ArrowLeft size={16} />
               </button>
-              <button onClick={handleConfirm} className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 hover:opacity-90" style={{ background: CORAL, fontWeight: 700, fontSize: "0.95rem" }}>
+              <button onClick={handleConfirm} disabled={submitting} className="flex-1 py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed" style={{ background: CORAL, fontWeight: 700, fontSize: "0.95rem" }}>
                 <Check size={18} />
-                Confirmar cita
+                {submitting ? "Confirmando..." : "Confirmar cita"}
               </button>
             </div>
           </div>

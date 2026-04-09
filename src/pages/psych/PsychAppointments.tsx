@@ -1,34 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Calendar, Video, Users, MessageCircle, Clock, Search } from "lucide-react";
+import { schedulingService, type SchedulingAppointment } from "../../service/schedulingService";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
-
-interface PsychAppointment {
-  id: string;
-  patient: string;
-  photo: string;
-  specialty: string;
-  date: string;
-  time: string;
-  modality: "video" | "presencial" | "chat";
-  sessionType: "primera" | "seguimiento";
-  status: "upcoming" | "completed" | "cancelled";
-  price: number;
-}
-
-const appointments: PsychAppointment[] = [
-  { id: "a1", patient: "Ana García", photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100", specialty: "Ansiedad", date: new Date(Date.now() + 1 * 86400000).toISOString().split("T")[0], time: "09:00", modality: "video", sessionType: "seguimiento", status: "upcoming", price: 55 },
-  { id: "a2", patient: "Luis Martínez", photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100", specialty: "Depresión", date: new Date(Date.now() + 1 * 86400000).toISOString().split("T")[0], time: "10:00", modality: "chat", sessionType: "primera", status: "upcoming", price: 35 },
-  { id: "a3", patient: "Carmen Vega", photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100", specialty: "Ansiedad", date: new Date(Date.now() - 1 * 86400000).toISOString().split("T")[0], time: "11:00", modality: "presencial", sessionType: "seguimiento", status: "completed", price: 75 },
-  { id: "a4", patient: "Roberto Díaz", photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100", specialty: "Estrés", date: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0], time: "14:00", modality: "video", sessionType: "primera", status: "upcoming", price: 55 },
-  { id: "a5", patient: "Mariana López", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100", specialty: "Mindfulness", date: new Date(Date.now() - 3 * 86400000).toISOString().split("T")[0], time: "15:00", modality: "video", sessionType: "seguimiento", status: "completed", price: 55 },
-  { id: "a6", patient: "Diego Fuentes", photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100", specialty: "Depresión", date: new Date(Date.now() - 5 * 86400000).toISOString().split("T")[0], time: "09:00", modality: "presencial", sessionType: "primera", status: "cancelled", price: 75 },
-];
 
 const modalityMeta = {
   video: { icon: Video, label: "Videollamada", color: TEAL, bg: FOG },
@@ -38,11 +17,34 @@ const modalityMeta = {
 
 export default function PsychAppointments() {
   const navigate = useNavigate();
+  const [appointments, setAppointments] = useState<SchedulingAppointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"upcoming" | "completed" | "cancelled">("upcoming");
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    const loadAppointments = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const list = await schedulingService.getMyAppointments("PSYCHOLOGIST");
+        setAppointments(list);
+      } catch {
+        setError("No se pudieron cargar tus citas.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAppointments();
+  }, []);
+
   const filtered = appointments.filter(
-    (a) => a.status === activeTab && a.patient.toLowerCase().includes(search.toLowerCase())
+    (a) =>
+      a.status === activeTab &&
+      String(a.patientName ?? "Paciente").toLowerCase().includes(search.toLowerCase())
   );
 
   const counts = {
@@ -79,6 +81,12 @@ export default function PsychAppointments() {
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8">
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700" style={{ fontSize: "0.85rem" }}>
+            {error}
+          </div>
+        )}
+
         {/* Search */}
         <div className="flex items-center gap-3 bg-white rounded-xl px-4 shadow-sm border mb-5" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
           <Search size={17} className="text-slate-400" />
@@ -123,7 +131,11 @@ export default function PsychAppointments() {
         </div>
 
         {/* Appointment list */}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-14 bg-white rounded-2xl border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
+            <p className="text-slate-500" style={{ fontWeight: 600 }}>Cargando citas...</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-14 bg-white rounded-2xl border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
             <Calendar size={32} className="text-slate-300 mx-auto mb-3" />
             <p className="text-slate-500" style={{ fontWeight: 600 }}>No hay citas en esta categoría</p>
@@ -136,11 +148,11 @@ export default function PsychAppointments() {
               return (
                 <div key={apt.id} className="bg-white rounded-2xl p-5 shadow-sm border" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
                   <div className="flex items-start gap-4">
-                    <img src={apt.photo} alt={apt.patient} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
+                    <img src={apt.patientPhoto || "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100"} alt={apt.patientName || "Paciente"} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-slate-900" style={{ fontWeight: 700, fontSize: "0.95rem" }}>{apt.patient}</p>
+                          <p className="text-slate-900" style={{ fontWeight: 700, fontSize: "0.95rem" }}>{apt.patientName || "Paciente"}</p>
                           <p style={{ color: TEAL, fontSize: "0.8rem" }}>{apt.specialty}</p>
                         </div>
                         <span
@@ -177,7 +189,7 @@ export default function PsychAppointments() {
                   {apt.status === "upcoming" && (
                     <div className="mt-3 pt-3 border-t flex gap-2" style={{ borderColor: "rgba(26,74,92,0.07)" }}>
                       <button
-                        onClick={() => navigate("/chat/apt-1")}
+                        onClick={() => navigate(`/paciente/chat/${apt.id}`)}
                         className="flex-1 py-2.5 rounded-xl text-white flex items-center justify-center gap-1.5 transition-colors"
                         style={{ background: apt.modality === "presencial" ? SAGE : TEAL, fontWeight: 600, fontSize: "0.82rem" }}
                       >
