@@ -163,13 +163,9 @@ export const schedulingService = {
   async getAvailability(
     psychologistId: string,
     date: string,
-    modality?: Appointment["modality"],
-    sessionType?: Appointment["sessionType"]
+    _modality?: Appointment["modality"],
+    _sessionType?: Appointment["sessionType"]
   ): Promise<SlotStatus[]> {
-    // Keep signature aligned with callers while backend availability API ignores these filters for now.
-    void modality;
-    void sessionType;
-
     const response = await api.get("/sessions");
     const sessions = (response.data as BackendSession[]).filter(
       (s) => s.psychologistId === psychologistId && s.date === date && !String(s.status).toUpperCase().includes("CANCEL")
