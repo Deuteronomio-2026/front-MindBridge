@@ -192,7 +192,7 @@ export const schedulingService = {
     psychologistId: string,
     date: string,
     modality?: Appointment["modality"],
-    _sessionType?: Appointment["sessionType"]
+    //_sessionType?: Appointment["sessionType"]
   ): Promise<SlotStatus[]> {
     const [sessionsResponse, schedule] = await Promise.all([
       api.get("/sessions"),
