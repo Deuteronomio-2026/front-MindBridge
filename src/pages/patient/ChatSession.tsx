@@ -1,5 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
   Circle,
@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { useUser } from "../../hooks/useUser";
+import {
+  schedulingService,
+  type SchedulingAppointment,
+  type SchedulingRole,
+} from "../../service/schedulingService";
 
 type ChatMessage = {
   id: string;
@@ -55,9 +60,50 @@ const RTC_CONFIGURATION: RTCConfiguration = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
 };
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://gateway-service.orangebay-0b927206.eastus.azurecontainerapps.io/api";
+
+const GATEWAY_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, "");
+
 const VIDEO_BACKEND_URL =
   import.meta.env.VITE_VIDEOCHAT_BACKEND_URL ||
-  "https://videochat-sfu-git-04071730.azurewebsites.net";
+  GATEWAY_BASE_URL;
+
+type DecodedAccessToken = {
+  role?: string;
+  name?: string;
+};
+
+function resolveCurrentRole(): SchedulingRole {
+  const token = window.localStorage.getItem("accessToken");
+  if (!token) {
+    return "PATIENT";
+  }
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1])) as DecodedAccessToken;
+    return String(payload.role ?? "PATIENT").toUpperCase() === "PSYCHOLOGIST"
+      ? "PSYCHOLOGIST"
+      : "PATIENT";
+  } catch {
+    return "PATIENT";
+  }
+}
+
+function resolveCurrentUserName(fallbackName: string) {
+  const token = window.localStorage.getItem("accessToken");
+  if (!token) {
+    return fallbackName;
+  }
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1])) as DecodedAccessToken;
+    return payload.name || fallbackName;
+  } catch {
+    return fallbackName;
+  }
+}
 
 function getOrCreateOpaqueUserId() {
   const storageKey = "videochat.opaque-user-id";
@@ -132,11 +178,16 @@ function RemoteVideoTile({ stream, muted = false }: { stream: MediaStream; muted
 export default function ChatSession() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { appointments, profile } = useUser();
+  const { profile } = useUser();
 
-  const appointment = appointments.find((a) => a.id === id);
-  const roomId = appointment?.id || `room-${id || "demo"}`;
-  const selfRole: RoomParticipant["role"] = "paciente";
+  const currentRole = useMemo(() => resolveCurrentRole(), []);
+  const selfRole: RoomParticipant["role"] =
+    currentRole === "PSYCHOLOGIST" ? "psicologo" : "paciente";
+  const selfDisplayName = useMemo(() => resolveCurrentUserName(profile.name), [profile.name]);
+  const [appointment, setAppointment] = useState<SchedulingAppointment | null>(null);
+  const [appointmentLoading, setAppointmentLoading] = useState(true);
+  const [appointmentError, setAppointmentError] = useState<string | null>(null);
+  const roomId = appointment?.id || id || "room-demo";
   const selfUserId = useMemo(() => getOrCreateOpaqueUserId(), []);
 
   const [stage, setStage] = useState<CallStage>("lobby");
@@ -163,12 +214,110 @@ export default function ChatSession() {
   const endMessagesRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef(false);
 
-  const partnerName = useMemo(
-    () => appointment?.psychologistName || "Profesional",
-    [appointment?.psychologistName]
+  useEffect(() => {
+    let ignore = false;
+
+    const loadAppointment = async () => {
+      if (!id) {
+        if (!ignore) {
+          setAppointment(null);
+          setAppointmentError("No se encontró la cita solicitada.");
+          setAppointmentLoading(false);
+        }
+        return;
+      }
+
+      if (!ignore) {
+        setAppointmentLoading(true);
+        setAppointmentError(null);
+      }
+
+      try {
+        const ownAppointments = await schedulingService.getMyAppointments(currentRole);
+        if (ignore) {
+          return;
+        }
+
+        const found = ownAppointments.find((item) => item.id === id) || null;
+        if (!found) {
+          setAppointment(null);
+          setAppointmentError("Esta cita no pertenece a tu agenda o ya no existe.");
+          return;
+        }
+
+        setAppointment(found);
+      } catch {
+        if (!ignore) {
+          setAppointment(null);
+          setAppointmentError("No se pudo cargar la cita. Intenta de nuevo.");
+        }
+      } finally {
+        if (!ignore) {
+          setAppointmentLoading(false);
+        }
+      }
+    };
+
+    void loadAppointment();
+
+    return () => {
+      ignore = true;
+    };
+  }, [currentRole, id]);
+
+  const partnerName = useMemo(() => {
+    if (!appointment) {
+      return "Profesional";
+    }
+
+    return currentRole === "PSYCHOLOGIST"
+      ? appointment.patientName || "Paciente"
+      : appointment.psychologistName || "Profesional";
+  }, [appointment, currentRole]);
+
+  const partnerPhoto = useMemo(() => {
+    if (!appointment) {
+      return "";
+    }
+
+    return currentRole === "PSYCHOLOGIST"
+      ? appointment.patientPhoto || ""
+      : appointment.psychologistPhoto || "";
+  }, [appointment, currentRole]);
+
+  const canJoinVirtualRoom = Boolean(
+    appointment &&
+      appointment.status === "upcoming" &&
+      (appointment.modality === "video" || appointment.modality === "chat")
   );
 
-  const partnerPhoto = appointment?.psychologistPhoto || "";
+  const modalityLabel =
+    appointment?.modality === "video"
+      ? "Videollamada"
+      : appointment?.modality === "chat"
+        ? "Chat"
+        : "Presencial";
+
+  const appointmentDateLabel = appointment?.date
+    ? new Date(`${appointment.date}T00:00:00`).toLocaleDateString("es-MX", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "Sin fecha";
+
+  const joinButtonLabel = isJoining
+    ? "Conectando..."
+    : !appointment
+      ? "Cita no disponible"
+      : !canJoinVirtualRoom
+        ? appointment.modality === "presencial"
+          ? "Cita presencial (sin sala virtual)"
+          : "Sala disponible solo para citas próximas"
+        : appointment.modality === "chat"
+          ? "Entrar al chat en vivo"
+          : "Entrar a la videollamada";
   const stageIsLive = stage === "live";
   const showDebugOverlay =
     import.meta.env.DEV || import.meta.env.VITE_ENABLE_WEBRTC_DEBUG === "true";
@@ -569,6 +718,15 @@ export default function ChatSession() {
       return;
     }
 
+    if (!canJoinVirtualRoom) {
+      setStatus(
+        appointment?.modality === "presencial"
+          ? "Esta cita es presencial y no tiene sala virtual."
+          : "Solo puedes entrar a salas de citas próximas."
+      );
+      return;
+    }
+
     setIsJoining(true);
     setStage("connecting");
     setStatus("Preparando dispositivos...");
@@ -604,7 +762,12 @@ export default function ChatSession() {
             : "Conectado. Esperando al otro participante..."
         );
 
-        // Un solo evento de union evita condiciones de carrera/duplicados en el backend.
+        socket.emit("chat:join-room", {
+          roomId,
+          userId: selfUserId,
+          role: selfRole,
+        });
+
         socket.emit("webrtc:join-room", {
           roomId,
           userId: selfUserId,
@@ -937,11 +1100,11 @@ export default function ChatSession() {
       isSelf: participant.userId === selfUserId,
       label:
         participant.userId === selfUserId
-          ? `${profile.name} (${selfRole})`
+          ? `${selfDisplayName} (${selfRole})`
           : `${participant.userId} (${participant.role})`,
       hasVideo: Boolean(videoTrack && videoTrack.enabled),
       hasAudio: Boolean(audioTrack && audioTrack.enabled),
-      initials: getInitials(participant.userId === selfUserId ? profile.name : participant.userId),
+      initials: getInitials(participant.userId === selfUserId ? selfDisplayName : participant.userId),
     };
   });
 
@@ -953,10 +1116,38 @@ export default function ChatSession() {
 
   const debugRows = Object.entries(debugByPeer);
 
+  if (appointmentLoading) {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center px-6" style={{ background: "#EEF4F7" }}>
+        <div className="rounded-2xl border bg-white px-6 py-5 text-center" style={{ borderColor: "rgba(26,74,92,0.12)" }}>
+          <p style={{ color: "#1A4A5C", fontWeight: 700 }}>Cargando datos de la cita...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (appointmentError) {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center px-6" style={{ background: "#EEF4F7" }}>
+        <div className="max-w-xl w-full rounded-2xl border bg-white p-6" style={{ borderColor: "rgba(239,68,68,0.2)" }}>
+          <p className="text-red-600" style={{ fontWeight: 700 }}>No fue posible abrir esta sala</p>
+          <p className="mt-2 text-slate-600" style={{ fontSize: "0.9rem" }}>{appointmentError}</p>
+          <button
+            onClick={() => navigate(-1)}
+            className="mt-5 px-4 py-2.5 rounded-xl text-white"
+            style={{ background: "#1A4A5C", fontWeight: 700 }}
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (stage === "lobby") {
     return (
       <div
-        className="min-h-screen px-4 py-8 md:px-10"
+        className="fixed inset-0 z-[70] overflow-y-auto px-4 py-8 md:px-10"
         style={{
           background:
             "radial-gradient(circle at 20% 20%, #f5fffb 0%, #f5fffb 30%, #f3f6ff 60%, #ecf0ff 100%)",
@@ -987,6 +1178,10 @@ export default function ChatSession() {
             <h1 className="text-3xl md:text-4xl mt-3" style={{ fontWeight: 800 }}>
               Sesion con {partnerName}
             </h1>
+
+            <p className="mt-3" style={{ color: "#56639B", fontSize: "0.86rem" }}>
+              {modalityLabel} · {appointmentDateLabel} · {appointment?.time || "--:--"}
+            </p>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
               <div
@@ -1041,17 +1236,23 @@ export default function ChatSession() {
 
             <button
               onClick={joinCall}
-              disabled={isJoining}
+              disabled={isJoining || !canJoinVirtualRoom}
               className="mt-8 h-14 px-7 rounded-2xl"
               style={{
                 background: "linear-gradient(90deg, #3168ff 0%, #39b5ff 100%)",
                 color: "white",
                 fontWeight: 800,
-                opacity: isJoining ? 0.7 : 1,
+                opacity: isJoining || !canJoinVirtualRoom ? 0.6 : 1,
               }}
             >
-              {isJoining ? "Conectando..." : "Entrar a la videollamada"}
+              {joinButtonLabel}
             </button>
+
+            {!canJoinVirtualRoom && (
+              <p className="mt-3" style={{ color: "#DC2626", fontSize: "0.82rem", fontWeight: 600 }}>
+                Esta sala solo está habilitada para citas próximas de modalidad video o chat.
+              </p>
+            )}
           </div>
 
           <div
@@ -1106,7 +1307,7 @@ export default function ChatSession() {
 
   return (
     <div
-      className="fixed inset-0"
+      className="fixed inset-0 z-[70]"
       style={{
         background:
           "radial-gradient(circle at 10% 10%, #2a3568 0%, #20284b 25%, #12172b 70%, #0d1020 100%)",
@@ -1300,7 +1501,7 @@ export default function ChatSession() {
                       {member.userId.charAt(0).toUpperCase()}
                     </div>
                     <span>
-                      {member.userId === selfUserId ? `${profile.name} (${selfRole})` : member.userId}
+                      {member.userId === selfUserId ? `${selfDisplayName} (${selfRole})` : member.userId}
                     </span>
                   </div>
                   <Circle size={10} fill="#6ee7b7" color="#6ee7b7" />
