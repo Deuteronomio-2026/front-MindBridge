@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { Brain, Calendar, User, Menu, X, ChevronDown, Bell, LogOut } from "lucide-react";
 import { useRealUser } from "../hooks/useRealUser";
+import { useEventNotifications } from "../context/EventNotificationContext";
+import { featureFlags } from "../config/featureFlags";
 
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
@@ -14,6 +16,20 @@ const mockNotifications = [
   { id: 3, text: "Recuerda completar tu perfil", time: "ayer", read: true, type: "info" },
 ];
 
+const toRelativeTime = (isoDate: string): string => {
+  const now = Date.now();
+  const created = new Date(isoDate).getTime();
+  const diffMs = Math.max(now - created, 0);
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return "ahora";
+  if (diffMinutes < 60) return `hace ${diffMinutes} min`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `hace ${diffHours} h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `hace ${diffDays} d`;
+};
+
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -21,8 +37,24 @@ export function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, loading, role } = useRealUser();
+  const {
+    notifications: eventNotifications,
+    unreadCount: eventUnreadCount,
+    markAllAsRead,
+  } = useEventNotifications();
 
-  const unreadCount = mockNotifications.filter((n) => !n.read).length;
+  const notifications = featureFlags.eventNotifications
+    ? eventNotifications.map((item) => ({
+        id: item.id,
+        text: item.message || item.title,
+        time: toRelativeTime(item.createdAt),
+        read: item.read,
+      }))
+    : mockNotifications;
+
+  const unreadCount = featureFlags.eventNotifications
+    ? eventUnreadCount
+    : mockNotifications.filter((n) => !n.read).length;
 
   const navLinks = [
     { href: "/paciente", label: "Inicio" },
@@ -107,7 +139,12 @@ export function Navbar() {
                       </span>
                     )}
                   </div>
-                  {mockNotifications.map((n) => (
+                  {notifications.length === 0 && (
+                    <div className="px-4 py-6 text-center text-slate-400" style={{ fontSize: "0.8rem" }}>
+                      No tienes notificaciones.
+                    </div>
+                  )}
+                  {notifications.map((n) => (
                     <div
                       key={n.id}
                       className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
@@ -128,9 +165,14 @@ export function Navbar() {
                     <button
                       className="w-full py-2 text-center rounded-lg transition-colors"
                       style={{ fontSize: "0.8rem", fontWeight: 600, color: SAGE }}
-                      onClick={() => setNotifOpen(false)}
+                      onClick={() => {
+                        if (featureFlags.eventNotifications) {
+                          markAllAsRead();
+                        }
+                        setNotifOpen(false);
+                      }}
                     >
-                      Ver todas las notificaciones
+                      {featureFlags.eventNotifications ? "Marcar como leídas" : "Ver todas las notificaciones"}
                     </button>
                   </div>
                 </div>

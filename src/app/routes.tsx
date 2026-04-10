@@ -25,6 +25,7 @@ import AdminLogs from "../pages/admin/AdminLogs";
 import AdminUsers from "../pages/admin/AdminUsers";
 import AdminMetrics from "../pages/admin/AdminMetrics";
 import AdminOffers from "../pages/admin/AdminOffers";
+import AdminGroupEvents from "../pages/admin/AdminGroupEvents";
 
 export const router = createBrowserRouter([
 
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
       { path: "logs", Component: AdminLogs },
       { path: "usuarios", Component: AdminUsers },
       { path: "ofertas", Component: AdminOffers },
+      { path: "eventos-grupales", Component: AdminGroupEvents },
     ],
   },
 

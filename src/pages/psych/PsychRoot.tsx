@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { UserProvider } from "../../context/UserProvider";
 import { useRealUser } from "../../hooks/useRealUser";
+import { useEventNotifications } from "../../context/EventNotificationContext";
+import { featureFlags } from "../../config/featureFlags";
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
@@ -18,6 +20,20 @@ const mockNotifications = [
   { id: 2, text: "Recordatorio: sesión con Luis M. en 1 hora", time: "hace 1h", read: false },
   { id: 3, text: "Ricardo F. canceló su cita del jueves", time: "hace 3h", read: true },
 ];
+
+const toRelativeTime = (isoDate: string): string => {
+  const now = Date.now();
+  const created = new Date(isoDate).getTime();
+  const diffMs = Math.max(now - created, 0);
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return "ahora";
+  if (diffMinutes < 60) return `hace ${diffMinutes} min`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `hace ${diffHours} h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `hace ${diffDays} d`;
+};
 
 const navLinks = [
   { href: "/panel-psicologo", label: "Panel", icon: LayoutDashboard, exact: true },
@@ -35,8 +51,24 @@ export default function PsychRoot() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, loading } = useRealUser();
+  const {
+    notifications: eventNotifications,
+    unreadCount: eventUnreadCount,
+    markAllAsRead,
+  } = useEventNotifications();
 
-  const unreadCount = mockNotifications.filter((n) => !n.read).length;
+  const notifications = featureFlags.eventNotifications
+    ? eventNotifications.map((item) => ({
+        id: item.id,
+        text: item.message || item.title,
+        time: toRelativeTime(item.createdAt),
+        read: item.read,
+      }))
+    : mockNotifications;
+
+  const unreadCount = featureFlags.eventNotifications
+    ? eventUnreadCount
+    : mockNotifications.filter((n) => !n.read).length;
   const fullName = profile ? `${profile.name} ${profile.lastName || ""}`.trim() : "Usuario";
   const displayName = fullName.split(" ")[0] || "Usuario";
   const displayInitial = fullName.charAt(0).toUpperCase() || "U";
@@ -108,7 +140,12 @@ export default function PsychRoot() {
                     <div className="flex items-center justify-between px-4 py-2 border-b mb-1" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
                       <p style={{ fontWeight: 700, fontSize: "0.875rem", color: TEAL }}>Notificaciones</p>
                     </div>
-                    {mockNotifications.map((n) => (
+                    {notifications.length === 0 && (
+                      <div className="px-4 py-6 text-center text-slate-400" style={{ fontSize: "0.8rem" }}>
+                        No tienes notificaciones.
+                      </div>
+                    )}
+                    {notifications.map((n) => (
                       <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer">
                         <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: n.read ? "#cbd5e1" : CORAL }} />
                         <div>
@@ -117,6 +154,20 @@ export default function PsychRoot() {
                         </div>
                       </div>
                     ))}
+                    {featureFlags.eventNotifications && notifications.length > 0 && (
+                      <div className="px-4 pt-2 pb-1 border-t" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
+                        <button
+                          className="w-full py-2 rounded-lg"
+                          style={{ fontSize: "0.8rem", fontWeight: 600, color: SAGE }}
+                          onClick={() => {
+                            markAllAsRead();
+                            setNotifOpen(false);
+                          }}
+                        >
+                          Marcar como leídas
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
