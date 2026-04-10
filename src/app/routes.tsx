@@ -60,6 +60,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: PsychHome },
       { path: "citas", Component: PsychAppointments },
+      { path: "chat/:id", Component: ChatSession },
       { path: "agenda", Component: PsychScheduleView },
       { path: "agenda/editar", Component: PsychSchedule },
       { path: "perfil", Component: UserProfile },
