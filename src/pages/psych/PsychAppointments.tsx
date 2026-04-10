@@ -188,14 +188,24 @@ export default function PsychAppointments() {
                   </div>
                   {apt.status === "upcoming" && (
                     <div className="mt-3 pt-3 border-t flex gap-2" style={{ borderColor: "rgba(26,74,92,0.07)" }}>
-                      <button
-                        onClick={() => navigate(`/paciente/chat/${apt.id}`)}
-                        className="flex-1 py-2.5 rounded-xl text-white flex items-center justify-center gap-1.5 transition-colors"
-                        style={{ background: apt.modality === "presencial" ? SAGE : TEAL, fontWeight: 600, fontSize: "0.82rem" }}
-                      >
-                        <Icon size={14} />
-                        {apt.modality === "video" ? "Iniciar videollamada" : apt.modality === "chat" ? "Abrir chat" : "Ver detalle"}
-                      </button>
+                      {apt.modality === "video" || apt.modality === "chat" ? (
+                        <button
+                          onClick={() => navigate(`/panel-psicologo/chat/${apt.id}`)}
+                          className="flex-1 py-2.5 rounded-xl text-white flex items-center justify-center gap-1.5 transition-colors"
+                          style={{ background: TEAL, fontWeight: 600, fontSize: "0.82rem" }}
+                        >
+                          <Icon size={14} />
+                          {apt.modality === "video" ? "Iniciar videollamada" : "Abrir chat"}
+                        </button>
+                      ) : (
+                        <div
+                          className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5"
+                          style={{ background: "#F1F5F9", color: "#64748B", fontWeight: 600, fontSize: "0.82rem" }}
+                        >
+                          <Users size={14} />
+                          Cita presencial
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

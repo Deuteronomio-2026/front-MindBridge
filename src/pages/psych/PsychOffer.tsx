@@ -4,6 +4,7 @@ import {
   Sparkles, TrendingUp, Star, Users, CheckCircle,
   Clock, ChevronLeft, Lock, Zap, BadgeDollarSign,
 } from "lucide-react";
+import { AxiosError } from "axios";
 import { offerService } from "../../service/offerService";
 import type { Offer as ApiOffer } from "../../service/offerService";
 import { useRealUser } from "../../hooks/useRealUser";
@@ -68,14 +69,14 @@ export default function PsychOffers() {
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [showSubscriptionBanner, setShowSubscriptionBanner] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const psychologistId = profile?.id;
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
     };
   }, []);
 
@@ -115,15 +116,17 @@ export default function PsychOffers() {
     try {
       await offerService.subscribeOffer(offerId, psychologistId);
       await loadOffers();
-      setShowSubscriptionBanner(true);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => setShowSubscriptionBanner(false), 5000);
+      // Mostrar banner de éxito temporal
+      setShowSuccessBanner(true);
+      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = setTimeout(() => setShowSuccessBanner(false), 10000);
       setError(null);
     } catch (err: unknown) {
       console.error("Error en suscripción:", err);
-      const message = err instanceof Error ? err.message : "";
-      if (message.includes("409") || message.includes("conflict")) {
-        setError("Alguien más se suscribió primero. La oferta ya no está disponible.");
+      if (err instanceof AxiosError && err.response?.status === 409) {
+        // Mensaje del backend o texto por defecto
+        const backendMessage = (err.response?.data as any)?.message || "La oferta ya no está disponible.";
+        setError(backendMessage);
         await loadOffers();
       } else {
         setError("Error al suscribirse. Intenta de nuevo.");
@@ -180,14 +183,8 @@ export default function PsychOffers() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-6">
-        {error && (
-          <div className="rounded-xl px-4 py-3 border" style={{ background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C", fontSize: "0.875rem" }}>
-            {error}
-            <button onClick={() => setError(null)} className="ml-3 underline" style={{ fontSize: "0.8rem" }}>Cerrar</button>
-          </div>
-        )}
-
-        {showSubscriptionBanner && (
+        {/* Banner de éxito temporal (10 segundos) */}
+        {showSuccessBanner && (
           <div className="rounded-2xl p-5 flex items-center gap-4 border" style={{ background: "#E8F5F1", borderColor: "#A7D4C5" }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: SAGE }}>
               <Star size={18} className="text-white" />
@@ -198,6 +195,14 @@ export default function PsychOffers() {
                 Tu visibilidad está activa. Los pacientes te ven primero en el listado con descuento aplicado.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Mensaje de error en cuadro rojo (con botón cerrar) */}
+        {error && (
+          <div className="rounded-xl px-4 py-3 border" style={{ background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C", fontSize: "0.875rem" }}>
+            {error}
+            <button onClick={() => setError(null)} className="ml-3 underline" style={{ fontSize: "0.8rem" }}>Cerrar</button>
           </div>
         )}
 
