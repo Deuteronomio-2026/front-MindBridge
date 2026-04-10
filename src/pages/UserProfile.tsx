@@ -15,6 +15,7 @@ export default function UserProfile() {
   const [bio, setBio] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [address, setAddress] = useState("");
+  const [specialization, setSpecialization] = useState(""); // Nuevo campo
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,10 +30,13 @@ export default function UserProfile() {
       setPhoneNumber(profile.phoneNumber || "");
       setAddress(profile.address || "");
       
-      if (role === 'PSYCHOLOGIST' && 'biography' in profile) {
-        setBio((profile as Psychologist).biography || "");
+      if (role === 'PSYCHOLOGIST') {
+        const p = profile as Psychologist;
+        setBio(p.biography || "");
+        setSpecialization(p.specialization || "");
       } else {
         setBio("");
+        setSpecialization("");
       }
       
       setPhotoPreview(null);
@@ -86,7 +90,9 @@ export default function UserProfile() {
       };
 
       if (role === 'PSYCHOLOGIST') {
-        (updates as Partial<Psychologist>).biography = bio;
+        const psychUpdates = updates as Partial<Psychologist>;
+        psychUpdates.biography = bio;
+        psychUpdates.specialization = specialization;
       }
 
       await updateProfile(updates);
@@ -220,11 +226,24 @@ export default function UserProfile() {
               <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-4 py-3 rounded-xl border outline-none" style={{ borderColor: "rgba(26,74,92,0.2)", background: "#F8FAFB", fontSize: "0.9rem" }} />
             </div>
             {isPsychologist && (
-              <div>
-                <label className="flex items-center gap-2 text-slate-700 mb-2"><FileText size={15} style={{ color: TEAL }} />Descripción personal</label>
-                <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} className="w-full px-4 py-3 rounded-xl border outline-none resize-none" style={{ borderColor: "rgba(26,74,92,0.2)", background: "#F8FAFB", fontSize: "0.9rem" }} maxLength={500} />
-                <div className="flex justify-end mt-1"><span className="text-slate-400 text-xs">{bio.length}/500</span></div>
-              </div>
+              <>
+                <div>
+                  <label className="flex items-center gap-2 text-slate-700 mb-2">Especialidad</label>
+                  <input
+                    type="text"
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "rgba(26,74,92,0.2)", background: "#F8FAFB", fontSize: "0.9rem" }}
+                    placeholder="Ej: Psicología Clínica, Terapia Cognitivo-Conductual..."
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-slate-700 mb-2"><FileText size={15} style={{ color: TEAL }} />Descripción personal</label>
+                  <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} className="w-full px-4 py-3 rounded-xl border outline-none resize-none" style={{ borderColor: "rgba(26,74,92,0.2)", background: "#F8FAFB", fontSize: "0.9rem" }} maxLength={500} />
+                  <div className="flex justify-end mt-1"><span className="text-slate-400 text-xs">{bio.length}/500</span></div>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -239,6 +258,9 @@ export default function UserProfile() {
             <div>
               <p className="text-slate-900" style={{ fontWeight: 700, fontSize: "1rem" }}>{name || "Tu nombre"}</p>
               <p className="text-slate-500" style={{ fontSize: "0.8rem" }}>{email || "tu@correo.com"}</p>
+              {isPsychologist && specialization && (
+                <p className="text-slate-500 mt-1" style={{ fontSize: "0.75rem" }}>Especialidad: {specialization}</p>
+              )}
               {isPsychologist && bio && <p className="text-slate-600 mt-2 leading-relaxed text-xs">{bio.slice(0, 120)}{bio.length > 120 ? "..." : ""}</p>}
             </div>
           </div>
