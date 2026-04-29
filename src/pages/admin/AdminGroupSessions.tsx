@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { Calendar, Clock, Users, CheckCircle, XCircle, Trash2, AlertCircle, Loader2 } from "lucide-react";
 import { groupSessionService, type GroupSession } from "../../service/groupSessionService";
-import { format } from "date-fns"; // puedes instalar date-fns o usar Date directamente
+
 
 const TEAL = "#1A4A5C";
 const SAGE = "#4E8B7A";
 const CORAL = "#E8856A";
-const FOG = "#EEF4F7";
-const MINT = "#A8D5C2";
+
 
 const statusColors: Record<GroupSession["status"], { bg: string; text: string; label: string }> = {
   PENDING: { bg: "#FEF3C7", text: "#D97706", label: "Pendiente" },

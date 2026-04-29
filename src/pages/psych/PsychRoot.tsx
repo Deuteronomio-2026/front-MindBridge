@@ -69,7 +69,7 @@ export default function PsychRoot() {
 
               {/* Desktop Nav - con más espacio y separadores */}
               <div className="hidden md:flex items-center gap-3">
-                {navLinks.map((link, idx) => {
+                {navLinks.map((link) => {
                   const Icon = link.icon;
                   // Mostrar separador antes de los grupos "profile" y "offers"
                   const showSeparator = link.group === "profile" || link.group === "offers";

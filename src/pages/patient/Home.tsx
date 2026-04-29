@@ -15,7 +15,7 @@ const TEAL_DARK = "#0D2E38";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const MINT = "#A8D5C2";
-const SAGE = "#4E8B7A";
+
 
 const QUICK_SPECIALTIES = specialtyOptions.slice(0, 8);
 
@@ -53,7 +53,7 @@ const mapToMockFormat = (p: Psychologist) => ({
 export default function Home() {
   const navigate = useNavigate();
   const { appointments } = useUser();
-  const { profile, loading: profileLoading } = useRealUser();
+  const { profile } = useRealUser();
   const [searchQuery, setSearchQuery] = useState("");
 
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
