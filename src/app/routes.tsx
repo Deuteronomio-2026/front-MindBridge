@@ -16,6 +16,7 @@ import PsychHome from "../pages/psych/PsychHome";
 import PsychSchedule from "../pages/psych/PsychSchedule";
 import PsychScheduleView from "../pages/psych/PsychScheduleView";
 import PsychAppointments from "../pages/psych/PsychAppointments";
+import PsychGroupSessions from "../pages/psych/PsychGroupSessions"; // 
 
 import Auth from "../pages/Auth";
 
@@ -25,19 +26,18 @@ import AdminLogs from "../pages/admin/AdminLogs";
 import AdminUsers from "../pages/admin/AdminUsers";
 import AdminMetrics from "../pages/admin/AdminMetrics";
 import AdminOffers from "../pages/admin/AdminOffers";
+import AdminGroupSessions from "../pages/admin/AdminGroupSessions";
 
 export const router = createBrowserRouter([
-
   {
     path: "/auth",
     Component: Auth,
   },
-
   {
     path: "/",
     element: <Navigate to="/auth" replace />,
   },
-  
+  //  PACIENTE
   {
     path: "/paciente",
     Component: Root,
@@ -52,8 +52,7 @@ export const router = createBrowserRouter([
       { path: "*", Component: NotFound },
     ],
   },
-
- 
+  //  PSICÓLOGO
   {
     path: "/panel-psicologo",
     Component: PsychRoot,
@@ -65,10 +64,10 @@ export const router = createBrowserRouter([
       { path: "agenda/editar", Component: PsychSchedule },
       { path: "perfil", Component: UserProfile },
       { path: "ofertas", Component: PsychOffers },
+      { path: "sesiones-grupales", Component: PsychGroupSessions }, // ✅ Ruta para sesiones grupales
     ],
   },
-
-  // 👉 ADMIN
+  //  ADMIN
   {
     path: "/admin",
     Component: AdminRoot,
@@ -78,8 +77,7 @@ export const router = createBrowserRouter([
       { path: "logs", Component: AdminLogs },
       { path: "usuarios", Component: AdminUsers },
       { path: "ofertas", Component: AdminOffers },
+      { path: "sesiones-grupales", Component: AdminGroupSessions },
     ],
   },
-
-
 ]);
