@@ -1,5 +1,5 @@
 import api from "./api";
-import type { Appointment } from "../types/user";
+import type { Appointment, Patient, Psychologist } from "../types/user";
 import { userService, type Modality as ScheduleModality, type PsychologistSchedule } from "./userService";
 
 export type SchedulingRole = "PATIENT" | "PSYCHOLOGIST";
@@ -36,6 +36,9 @@ export interface SchedulingAppointment extends Appointment {
   patientId?: string;
   patientName?: string;
   patientPhoto?: string;
+  patientEmail?: string;
+  patientPhone?: string;
+  patientAddress?: string;
 }
 
 const toIsoDate = (value: unknown): string => {
@@ -118,6 +121,75 @@ const scheduleToModality = (modality: ScheduleModality): Appointment["modality"]
   return "video";
 };
 
+const asRecord = (value: unknown): Record<string, unknown> => {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+};
+
+const isPresent = (value: unknown): boolean => {
+  if (value === undefined || value === null) return false;
+
+  const normalized = String(value).trim().toLowerCase();
+  return normalized !== "" && normalized !== "undefined" && normalized !== "null";
+};
+
+const firstPresent = (...values: unknown[]): unknown => {
+  return values.find(isPresent);
+};
+
+const fullName = (person: Record<string, unknown>): string => {
+  const directName = firstPresent(person.fullName, person.displayName);
+  if (directName) return String(directName);
+
+  return [firstPresent(person.name, person.firstName), person.lastName]
+    .filter(isPresent)
+    .join(" ");
+};
+
+const getProfilePhoto = (person: Record<string, unknown>): string => {
+  return String(
+    firstPresent(
+      person.photo,
+      person.profilePhoto,
+      person.profilePicture,
+      person.avatar,
+      person.image,
+      person.imageUrl,
+      person.photoUrl,
+      "https://via.placeholder.com/120"
+    )
+  );
+};
+
+const getSpecialty = (psychologist: Record<string, unknown>): string => {
+  return String(
+    firstPresent(
+      psychologist.specialty,
+      psychologist.specialization,
+      psychologist.title,
+      psychologist.professionalTitle,
+      "General"
+    )
+  );
+};
+
+const getAppointmentPrice = (raw: Record<string, unknown>, psychologist: Record<string, unknown>): number => {
+  const rawPrice = Number(firstPresent(raw.price, raw.amount, raw.consultationFee));
+  if (Number.isFinite(rawPrice) && rawPrice > 0) return rawPrice;
+
+  const baseFee = Number(firstPresent(psychologist.consultationFee, psychologist.price, psychologist.fee));
+  if (!Number.isFinite(baseFee)) return 0;
+
+  const modality = normalizeModality(firstPresent(raw.modality, raw.type));
+  if (modality === "presencial") return baseFee + 50;
+  if (modality === "chat") return Math.max(0, baseFee - 30);
+  return baseFee;
+};
+
+const getContactValue = (person: Record<string, unknown>, ...keys: string[]): string | undefined => {
+  const value = firstPresent(...keys.map((key) => person[key]));
+  return value ? String(value) : undefined;
+};
+
 const weekdayToScheduleDay = (date: string): string => {
   const jsDay = new Date(`${date}T00:00:00`).getDay();
   const map = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
@@ -151,11 +223,18 @@ const getCurrentRole = (): SchedulingRole => {
   }
 };
 
-const mapAppointment = (raw: Record<string, unknown>): SchedulingAppointment => {
-  const psychologist = (raw.psychologist as Record<string, unknown> | undefined) ?? {};
-  const patient = (raw.patient as Record<string, unknown> | undefined) ?? {};
-  const psychologistFullName = [psychologist.firstName, psychologist.lastName].filter(Boolean).join(" ");
-  const patientFullName = [patient.firstName, patient.lastName].filter(Boolean).join(" ");
+const mapAppointment = (
+  raw: Record<string, unknown>,
+  related?: { psychologist?: Psychologist; patient?: Patient }
+): SchedulingAppointment => {
+  const psychologist = {
+    ...asRecord(raw.psychologist),
+    ...asRecord(related?.psychologist),
+  };
+  const patient = {
+    ...asRecord(raw.patient),
+    ...asRecord(related?.patient),
+  };
 
   const appointmentDate =
     raw.date ??
@@ -172,19 +251,54 @@ const mapAppointment = (raw: Record<string, unknown>): SchedulingAppointment => 
   return {
     id: String(raw.id ?? raw.appointmentId ?? crypto.randomUUID()),
     psychologistId: String(raw.psychologistId ?? psychologist.id ?? ""),
-    psychologistName: String((raw.psychologistName ?? psychologist.name ?? psychologistFullName) || "Psicólogo"),
-    psychologistPhoto: String(raw.psychologistPhoto ?? psychologist.photo ?? ""),
-    specialty: String(raw.specialty ?? psychologist.specialty ?? psychologist.specialization ?? "General"),
-    sessionType: normalizeSessionType(raw.sessionType),
-    modality: normalizeModality(raw.modality),
+    psychologistName: String(firstPresent(raw.psychologistName, fullName(psychologist), "Psicólogo")),
+    psychologistPhoto: String(firstPresent(raw.psychologistPhoto, getProfilePhoto(psychologist))),
+    specialty: String(firstPresent(raw.specialty, getSpecialty(psychologist))),
+    sessionType: normalizeSessionType(firstPresent(raw.sessionType, raw.attentionType)),
+    modality: normalizeModality(firstPresent(raw.modality, raw.type)),
     date: toIsoDate(appointmentDate),
     time: toHourMinute(appointmentTime),
-    price: Number(raw.price ?? raw.amount ?? 0),
+    price: getAppointmentPrice(raw, psychologist),
     status: normalizeStatus(raw.status),
     patientId: patient.id ? String(patient.id) : undefined,
-    patientName: String((raw.patientName ?? patient.name ?? patientFullName) || "") || undefined,
-    patientPhoto: String(raw.patientPhoto ?? patient.photo ?? "") || undefined,
+    patientName: String(firstPresent(raw.patientName, fullName(patient), "")) || undefined,
+    patientPhoto: String(firstPresent(raw.patientPhoto, getProfilePhoto(patient), "")) || undefined,
+    patientEmail: getContactValue(patient, "email", "mail"),
+    patientPhone: getContactValue(patient, "phoneNumber", "phone", "telephone", "mobile"),
+    patientAddress: getContactValue(patient, "address", "homeAddress"),
   };
+};
+
+const getPsychologistsById = async (psychologistIds: string[]): Promise<Map<string, Psychologist>> => {
+  const uniqueIds = [...new Set(psychologistIds.filter(Boolean))];
+  const entries = await Promise.all(
+    uniqueIds.map(async (id) => {
+      try {
+        const psychologist = await userService.getPsychologistById(id);
+        return [id, psychologist] as const;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return new Map(entries.filter((entry): entry is readonly [string, Psychologist] => entry !== null));
+};
+
+const getPatientsById = async (patientIds: string[]): Promise<Map<string, Patient>> => {
+  const uniqueIds = [...new Set(patientIds.filter(Boolean))];
+  const entries = await Promise.all(
+    uniqueIds.map(async (id) => {
+      try {
+        const patient = await userService.getPatientById(id);
+        return [id, patient] as const;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return new Map(entries.filter((entry): entry is readonly [string, Patient] => entry !== null));
 };
 
 export const schedulingService = {
@@ -194,6 +308,8 @@ export const schedulingService = {
     modality?: Appointment["modality"],
     _sessionType?: Appointment["sessionType"]
   ): Promise<SlotStatus[]> {
+    void _sessionType;
+
     const [sessionsResponse, schedule] = await Promise.all([
       api.get("/sessions"),
       userService.getPsychologistSchedule(psychologistId),
@@ -253,7 +369,24 @@ export const schedulingService = {
       return session.patientId === currentUserId;
     });
 
-    return filtered.map((a) => mapAppointment(a as unknown as Record<string, unknown>));
+    const psychologistsById =
+      effectiveRole === "PATIENT"
+        ? await getPsychologistsById(filtered.map((session) => String(session.psychologistId ?? "")))
+        : new Map<string, Psychologist>();
+    const patientsById =
+      effectiveRole === "PSYCHOLOGIST"
+        ? await getPatientsById(filtered.map((session) => String(session.patientId ?? "")))
+        : new Map<string, Patient>();
+
+    return filtered.map((a) => {
+      const raw = a as unknown as Record<string, unknown>;
+      const psychologistId = String(raw.psychologistId ?? "");
+      const patientId = String(raw.patientId ?? "");
+      return mapAppointment(raw, {
+        psychologist: psychologistsById.get(psychologistId),
+        patient: patientsById.get(patientId),
+      });
+    });
   },
 
   async cancelAppointment(appointmentId: string): Promise<void> {
