@@ -34,32 +34,36 @@ const MODALITY_COLORS: Record<string, string> = {
   Chat: "#0EA5E9",
 };
 
-const mapPsychologistToLocal = (p: Psychologist) => ({
-  id: p.id,
-  name: `${p.name} ${p.lastName}`,
-  title: p.specialization,
-  verified: p.verificationStatus === "VERIFIED",
-  specialties: [p.specialization],
-  location: p.address || p.officeLocation || "Ubicación no especificada",
-  rating: 4.8,
-  reviewCount: 12,
-  experience: p.yearsOfExperience,
-  bio: p.biography || "",
-  languages: p.languages || [],
-  education: [],
-  prices: {
-    video: p.consultationFee,
-    presencial: p.consultationFee + 50,
-    chat: p.consultationFee - 30,
-  },
-  schedule: {},
-  reviews: [
-    { id: "1", user: "María G.", avatar: "MG", rating: 5, date: "15/03/2026", comment: "Excelente profesional, muy empático y resolutivo." },
-    { id: "2", user: "Carlos L.", avatar: "CL", rating: 4.5, date: "02/04/2026", comment: "Muy buena terapia, me ayudó mucho." },
-    { id: "3", user: "Ana R.", avatar: "AR", rating: 5, date: "20/03/2026", comment: "Recomendado 100%. Profesional con mucha experiencia." }
-  ],
-  photo: "https://via.placeholder.com/120",
-});
+const mapPsychologistToLocal = (p: Psychologist) => {
+  const fee = Number(p.consultationFee) || 0;
+
+  return {
+    id: p.id,
+    name: `${p.name} ${p.lastName}`,
+    title: p.specialization,
+    verified: p.verificationStatus === "VERIFIED",
+    specialties: [p.specialization],
+    location: p.address || p.officeLocation || "Ubicación no especificada",
+    rating: 4.8,
+    reviewCount: 12,
+    experience: p.yearsOfExperience,
+    bio: p.biography || "",
+    languages: p.languages || [],
+    education: [],
+    prices: {
+      video: fee,
+      presencial: fee + 50,
+      chat: Math.max(0, fee - 30),
+    },
+    schedule: {},
+    reviews: [
+      { id: "1", user: "María G.", avatar: "MG", rating: 5, date: "15/03/2026", comment: "Excelente profesional, muy empático y resolutivo." },
+      { id: "2", user: "Carlos L.", avatar: "CL", rating: 4.5, date: "02/04/2026", comment: "Muy buena terapia, me ayudó mucho." },
+      { id: "3", user: "Ana R.", avatar: "AR", rating: 5, date: "20/03/2026", comment: "Recomendado 100%. Profesional con mucha experiencia." }
+    ],
+    photo: "https://via.placeholder.com/120",
+  };
+};
 
 export default function PsychologistDetail() {
   const { id } = useParams();

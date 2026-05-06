@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Calendar, Video, Users, MessageCircle, Clock, Search, Mail, Phone, MapPin } from "lucide-react";
+import { Calendar, Video, Users, MessageCircle, Clock, Search, Mail, Phone, MapPin, XCircle } from "lucide-react";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { schedulingService, type SchedulingAppointment } from "../../service/schedulingService";
 
 const TEAL = "#1A4A5C";
@@ -22,6 +23,8 @@ export default function PsychAppointments() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"upcoming" | "completed" | "cancelled">("upcoming");
   const [search, setSearch] = useState("");
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [confirmingAppointment, setConfirmingAppointment] = useState<SchedulingAppointment | null>(null);
 
   useEffect(() => {
     const loadAppointments = async () => {
@@ -65,6 +68,21 @@ export default function PsychAppointments() {
     new Date(dateStr + "T00:00:00").toLocaleDateString("es-MX", {
       weekday: "short", day: "numeric", month: "short",
     });
+
+  const cancelAppointment = async (appointmentId: string) => {
+    setCancellingId(appointmentId);
+    setError(null);
+
+    try {
+      await schedulingService.cancelAppointment(appointmentId);
+      setAppointments((prev) => prev.map((apt) => (apt.id === appointmentId ? { ...apt, status: "cancelled" } : apt)));
+    } catch {
+      setError("No se pudo cancelar la sesión.");
+    } finally {
+      setCancellingId(null);
+      setConfirmingAppointment(null);
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ background: FOG }}>
@@ -239,6 +257,21 @@ export default function PsychAppointments() {
                           Cita presencial
                         </div>
                       )}
+                      <button
+                        onClick={() => setConfirmingAppointment(apt)}
+                        disabled={cancellingId === apt.id}
+                        className="flex-1 py-2.5 rounded-xl border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ borderColor: "#FECACA", color: "#DC2626", fontWeight: 600, fontSize: "0.82rem", background: "#FFF5F5" }}
+                      >
+                        {cancellingId === apt.id ? (
+                          "Cancelando..."
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <XCircle size={14} />
+                            Cancelar sesión
+                          </span>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -247,6 +280,25 @@ export default function PsychAppointments() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmingAppointment !== null}
+        title="Cancelar sesión"
+        message={
+          confirmingAppointment
+            ? `Vas a cancelar la sesión de ${confirmingAppointment.patientName || "este paciente"} del ${formatDate(confirmingAppointment.date)} a las ${confirmingAppointment.time}. Esta acción no se puede deshacer.`
+            : "Vas a cancelar esta sesión. Esta acción no se puede deshacer."
+        }
+        confirmLabel="Sí, cancelar"
+        cancelLabel="Volver"
+        loading={cancellingId === confirmingAppointment?.id}
+        onClose={() => setConfirmingAppointment(null)}
+        onConfirm={() => {
+          if (confirmingAppointment) {
+            void cancelAppointment(confirmingAppointment.id);
+          }
+        }}
+      />
     </div>
   );
 }
