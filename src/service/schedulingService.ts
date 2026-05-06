@@ -41,6 +41,15 @@ export interface SchedulingAppointment extends Appointment {
   patientAddress?: string;
 }
 
+type StoredAppointmentPrice = {
+  price: number;
+  psychologistId?: string;
+  date?: string;
+  time?: string;
+};
+
+const APPOINTMENT_PRICE_CACHE_KEY = "mindbridge.appointmentPrices";
+
 const toIsoDate = (value: unknown): string => {
   if (typeof value !== "string") {
     return new Date().toISOString().split("T")[0];
@@ -136,6 +145,78 @@ const firstPresent = (...values: unknown[]): unknown => {
   return values.find(isPresent);
 };
 
+const toFiniteNumber = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const getStoredAppointmentPrices = (): Record<string, StoredAppointmentPrice> => {
+  try {
+    return JSON.parse(localStorage.getItem(APPOINTMENT_PRICE_CACHE_KEY) || "{}") as Record<string, StoredAppointmentPrice>;
+  } catch {
+    return {};
+  }
+};
+
+const appointmentCompositeKey = (appointment: {
+  psychologistId?: unknown;
+  date?: unknown;
+  time?: unknown;
+}): string | undefined => {
+  const psychologistId = firstPresent(appointment.psychologistId);
+  const date = firstPresent(appointment.date);
+  const time = firstPresent(appointment.time);
+
+  if (!psychologistId || !date || !time) return undefined;
+  return `${psychologistId}|${toIsoDate(date)}|${toHourMinute(time)}`;
+};
+
+const rememberAppointmentPrice = (appointment: {
+  id?: unknown;
+  psychologistId?: unknown;
+  date?: unknown;
+  time?: unknown;
+  price?: unknown;
+}) => {
+  const price = toFiniteNumber(appointment.price);
+  if (!price || price <= 0) return;
+
+  const id = firstPresent(appointment.id);
+  const compositeKey = appointmentCompositeKey(appointment);
+  const cache = getStoredAppointmentPrices();
+  const value: StoredAppointmentPrice = {
+    price,
+    psychologistId: appointment.psychologistId ? String(appointment.psychologistId) : undefined,
+    date: appointment.date ? toIsoDate(appointment.date) : undefined,
+    time: appointment.time ? toHourMinute(appointment.time) : undefined,
+  };
+
+  if (id) cache[String(id)] = value;
+  if (compositeKey) cache[compositeKey] = value;
+
+  try {
+    localStorage.setItem(APPOINTMENT_PRICE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // If storage is unavailable, the backend/profile price fallback still keeps the UI usable.
+  }
+};
+
+const getCachedAppointmentPrice = (raw: Record<string, unknown>): number | undefined => {
+  const cache = getStoredAppointmentPrices();
+  const id = firstPresent(raw.id, raw.appointmentId, raw.sessionId);
+  const byId = id ? cache[String(id)]?.price : undefined;
+  if (byId && byId > 0) return byId;
+
+  const compositeKey = appointmentCompositeKey({
+    psychologistId: firstPresent(raw.psychologistId, raw.psychologist_id),
+    date: firstPresent(raw.date, raw.appointmentDate, raw.startDate, raw.startAt),
+    time: firstPresent(raw.time, raw.appointmentTime, raw.startTime, raw.startAt),
+  });
+
+  const byCompositeKey = compositeKey ? cache[compositeKey]?.price : undefined;
+  return byCompositeKey && byCompositeKey > 0 ? byCompositeKey : undefined;
+};
+
 const fullName = (person: Record<string, unknown>): string => {
   const directName = firstPresent(person.fullName, person.displayName);
   if (directName) return String(directName);
@@ -173,13 +254,41 @@ const getSpecialty = (psychologist: Record<string, unknown>): string => {
 };
 
 const getAppointmentPrice = (raw: Record<string, unknown>, psychologist: Record<string, unknown>): number => {
-  const rawPrice = Number(firstPresent(raw.price, raw.amount, raw.consultationFee));
-  if (Number.isFinite(rawPrice) && rawPrice > 0) return rawPrice;
+  const payment = asRecord(raw.payment);
+  const cachedPrice = getCachedAppointmentPrice(raw);
+  if (cachedPrice) return cachedPrice;
 
-  const baseFee = Number(firstPresent(psychologist.consultationFee, psychologist.price, psychologist.fee));
-  if (!Number.isFinite(baseFee)) return 0;
+  const rawPrice = toFiniteNumber(
+    firstPresent(
+      raw.price,
+      raw.amount,
+      raw.totalPrice,
+      raw.sessionPrice,
+      raw.cost,
+      payment.amount,
+      payment.price,
+      raw.consultationFee
+    )
+  );
+  if (rawPrice && rawPrice > 0) return rawPrice;
 
+  const prices = asRecord(psychologist.prices);
   const modality = normalizeModality(firstPresent(raw.modality, raw.type));
+  const modalityPrice = toFiniteNumber(prices[modality]);
+  if (modalityPrice && modalityPrice > 0) return modalityPrice;
+
+  const baseFee = toFiniteNumber(
+    firstPresent(
+      psychologist.consultationFee,
+      psychologist.consultation_fee,
+      psychologist.sessionPrice,
+      psychologist.session_price,
+      psychologist.price,
+      psychologist.fee
+    )
+  );
+  if (!baseFee || baseFee <= 0) return 0;
+
   if (modality === "presencial") return baseFee + 50;
   if (modality === "chat") return Math.max(0, baseFee - 30);
   return baseFee;
@@ -250,7 +359,7 @@ const mapAppointment = (
 
   return {
     id: String(raw.id ?? raw.appointmentId ?? crypto.randomUUID()),
-    psychologistId: String(raw.psychologistId ?? psychologist.id ?? ""),
+    psychologistId: String(firstPresent(raw.psychologistId, raw.psychologist_id, psychologist.id, "")),
     psychologistName: String(firstPresent(raw.psychologistName, fullName(psychologist), "Psicólogo")),
     psychologistPhoto: String(firstPresent(raw.psychologistPhoto, getProfilePhoto(psychologist))),
     specialty: String(firstPresent(raw.specialty, getSpecialty(psychologist))),
@@ -352,8 +461,20 @@ export const schedulingService = {
       endTime: addOneHour(payload.time),
       type: modalityToBackendType(payload.modality),
       attentionType: sessionTypeToBackend(payload.sessionType),
+      price: payload.price,
+      amount: payload.price,
     });
-    return mapAppointment(response.data as Record<string, unknown>);
+    const raw = {
+      ...(response.data as Record<string, unknown>),
+      psychologistId: payload.psychologistId,
+      date: payload.date,
+      time: payload.time,
+      modality: payload.modality,
+      sessionType: payload.sessionType,
+      price: payload.price,
+    };
+    rememberAppointmentPrice(raw);
+    return mapAppointment(raw);
   },
 
   async getMyAppointments(role: SchedulingRole): Promise<SchedulingAppointment[]> {
@@ -363,25 +484,30 @@ export const schedulingService = {
     const list = response.data as BackendSession[];
 
     const filtered = list.filter((session) => {
+      const raw = asRecord(session);
       if (effectiveRole === "PSYCHOLOGIST") {
-        return session.psychologistId === currentUserId;
+        return firstPresent(raw.psychologistId, raw.psychologist_id) === currentUserId;
       }
-      return session.patientId === currentUserId;
+      return firstPresent(raw.patientId, raw.patient_id) === currentUserId;
     });
 
     const psychologistsById =
       effectiveRole === "PATIENT"
-        ? await getPsychologistsById(filtered.map((session) => String(session.psychologistId ?? "")))
+        ? await getPsychologistsById(
+            filtered.map((session) => String(firstPresent(asRecord(session).psychologistId, asRecord(session).psychologist_id, "")))
+          )
         : new Map<string, Psychologist>();
     const patientsById =
       effectiveRole === "PSYCHOLOGIST"
-        ? await getPatientsById(filtered.map((session) => String(session.patientId ?? "")))
+        ? await getPatientsById(
+            filtered.map((session) => String(firstPresent(asRecord(session).patientId, asRecord(session).patient_id, "")))
+          )
         : new Map<string, Patient>();
 
     return filtered.map((a) => {
       const raw = a as unknown as Record<string, unknown>;
-      const psychologistId = String(raw.psychologistId ?? "");
-      const patientId = String(raw.patientId ?? "");
+      const psychologistId = String(firstPresent(raw.psychologistId, raw.psychologist_id, ""));
+      const patientId = String(firstPresent(raw.patientId, raw.patient_id, ""));
       return mapAppointment(raw, {
         psychologist: psychologistsById.get(psychologistId),
         patient: patientsById.get(patientId),

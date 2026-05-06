@@ -45,7 +45,7 @@ const mapToCardFormat = (p: Psychologist) => {
     prices: {
       video: fee,
       presencial: fee + 50,
-      chat: fee - 30,
+      chat: Math.max(0, fee - 30),
     },
     schedule: {},
     reviews: [],
