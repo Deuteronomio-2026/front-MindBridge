@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, useNavigate, useLocation, Link} from "react-router";
 import {
   Brain, LayoutDashboard, Users, FileText,
-  Bell, ChevronDown, LogOut, Menu, X, Shield, BarChart3
+  Bell, ChevronDown, LogOut, Menu, X,Calendar, Shield, BarChart3
 } from "lucide-react";
 
 import { Tag } from "lucide-react";
@@ -17,7 +17,8 @@ const navLinks = [
   { href: "/admin/metricas", label: "Métricas", icon: BarChart3 },
   { href: "/admin/logs", label: "Logs", icon: FileText },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
-  { href: "/admin/ofertas", label: "Ofertas", icon: Tag}
+  { href: "/admin/ofertas", label: "Ofertas", icon: Tag},
+  { href: "/admin/sesiones-grupales", label: "Sesiones Grupales", icon: Calendar },
 ];
 
 const criticalAlerts = [
