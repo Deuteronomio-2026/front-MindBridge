@@ -36,6 +36,10 @@ const statusMeta: Record<OfferStatus, { label: string; color: string; bg: string
   taken: { label: "No disponible", color: "#94a3b8", bg: "#F1F5F9" },
 };
 
+type BackendErrorResponse = {
+  message?: string;
+};
+
 function timeLeft(isoDate: string): string {
   const diff = new Date(isoDate).getTime() - Date.now();
   if (diff <= 0) return "Expirada";
@@ -125,7 +129,9 @@ export default function PsychOffers() {
       console.error("Error en suscripción:", err);
       if (err instanceof AxiosError && err.response?.status === 409) {
         // Mensaje del backend o texto por defecto
-        const backendMessage = (err.response?.data as any)?.message || "La oferta ya no está disponible.";
+        const backendMessage =
+          (err.response?.data as BackendErrorResponse | undefined)?.message ||
+          "La oferta ya no está disponible.";
         setError(backendMessage);
         await loadOffers();
       } else {
