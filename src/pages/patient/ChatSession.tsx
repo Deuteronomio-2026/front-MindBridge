@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useLocation } from "react-router";
 import {
   ArrowLeft,
   Circle,
@@ -14,6 +14,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
+import { Device, type types as MediasoupTypes } from "mediasoup-client";
 import { io, type Socket } from "socket.io-client";
 import { useUser } from "../../hooks/useUser";
 import {
@@ -21,6 +22,7 @@ import {
   type SchedulingAppointment,
   type SchedulingRole,
 } from "../../service/schedulingService";
+import { groupSessionService, type GroupSession } from "../../service/groupSessionService";
 
 type ChatMessage = {
   id: string;
@@ -178,16 +180,27 @@ function RemoteVideoTile({ stream, muted = false }: { stream: MediaStream; muted
 export default function ChatSession() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const { profile } = useUser();
 
   const currentRole = useMemo(() => resolveCurrentRole(), []);
   const selfRole: RoomParticipant["role"] =
     currentRole === "PSYCHOLOGIST" ? "psicologo" : "paciente";
   const selfDisplayName = useMemo(() => resolveCurrentUserName(profile.name), [profile.name]);
+  const isGroupSession = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("group") === "true";
+  }, [location.search]);
+
   const [appointment, setAppointment] = useState<SchedulingAppointment | null>(null);
   const [appointmentLoading, setAppointmentLoading] = useState(true);
   const [appointmentError, setAppointmentError] = useState<string | null>(null);
-  const roomId = appointment?.id || id || "room-demo";
+
+  const [groupSession, setGroupSession] = useState<GroupSession | null>(null);
+  const [groupLoading, setGroupLoading] = useState(isGroupSession);
+  const [groupError, setGroupError] = useState<string | null>(null);
+
+  const roomId = (isGroupSession ? groupSession?.id : appointment?.id) || id || "room-demo";
   const selfUserId = useMemo(() => getOrCreateOpaqueUserId(), []);
 
   const [stage, setStage] = useState<CallStage>("lobby");
@@ -211,10 +224,22 @@ export default function ChatSession() {
   const settingRemoteAnswerPendingRef = useRef<Map<string, boolean>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const sfuDeviceRef = useRef<MediasoupTypes.Device | null>(null);
+  const sfuSendTransportRef = useRef<MediasoupTypes.Transport | null>(null);
+  const sfuRecvTransportRef = useRef<MediasoupTypes.Transport | null>(null);
+  const sfuProducersRef = useRef<Map<string, MediasoupTypes.Producer>>(new Map());
+  const sfuConsumersRef = useRef<Map<string, { consumer: MediasoupTypes.Consumer; userId: string }>>(new Map());
   const endMessagesRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef(false);
 
   useEffect(() => {
+    if (isGroupSession) {
+      setAppointment(null);
+      setAppointmentError(null);
+      setAppointmentLoading(false);
+      return;
+    }
+
     let ignore = false;
 
     const loadAppointment = async () => {
@@ -263,9 +288,71 @@ export default function ChatSession() {
     return () => {
       ignore = true;
     };
-  }, [currentRole, id]);
+  }, [currentRole, id, isGroupSession]);
+
+  useEffect(() => {
+    if (!isGroupSession) {
+      setGroupSession(null);
+      setGroupError(null);
+      setGroupLoading(false);
+      return;
+    }
+
+    let ignore = false;
+
+    const loadGroupSession = async () => {
+      if (!id) {
+        if (!ignore) {
+          setGroupSession(null);
+          setGroupError("No se encontró la sesión grupal solicitada.");
+          setGroupLoading(false);
+        }
+        return;
+      }
+
+      if (!ignore) {
+        setGroupLoading(true);
+        setGroupError(null);
+      }
+
+      try {
+        const sessions = await groupSessionService.getApprovedSessions();
+        if (ignore) {
+          return;
+        }
+
+        const found = sessions.find((session) => session.id === id) || null;
+        if (!found) {
+          setGroupSession(null);
+          setGroupError("Esta sesión grupal no está disponible.");
+          return;
+        }
+
+        setGroupSession(found);
+      } catch {
+        if (!ignore) {
+          setGroupSession(null);
+          setGroupError("No se pudo cargar la sesión grupal. Intenta de nuevo.");
+        }
+      } finally {
+        if (!ignore) {
+          setGroupLoading(false);
+        }
+      }
+    };
+
+    void loadGroupSession();
+
+    return () => {
+      ignore = true;
+    };
+  }, [id, isGroupSession]);
 
   const partnerName = useMemo(() => {
+    if (isGroupSession) {
+      return groupSession?.title || "Sesión grupal";
+    }
+
     if (!appointment) {
       return "Profesional";
     }
@@ -273,9 +360,13 @@ export default function ChatSession() {
     return currentRole === "PSYCHOLOGIST"
       ? appointment.patientName || "Paciente"
       : appointment.psychologistName || "Profesional";
-  }, [appointment, currentRole]);
+  }, [appointment, currentRole, groupSession, isGroupSession]);
 
   const partnerPhoto = useMemo(() => {
+    if (isGroupSession) {
+      return "";
+    }
+
     if (!appointment) {
       return "";
     }
@@ -283,16 +374,19 @@ export default function ChatSession() {
     return currentRole === "PSYCHOLOGIST"
       ? appointment.patientPhoto || ""
       : appointment.psychologistPhoto || "";
-  }, [appointment, currentRole]);
+  }, [appointment, currentRole, isGroupSession]);
 
-  const canJoinVirtualRoom = Boolean(
-    appointment &&
-      appointment.status === "upcoming" &&
-      (appointment.modality === "video" || appointment.modality === "chat")
-  );
+  const canJoinVirtualRoom = isGroupSession
+    ? Boolean(groupSession && groupSession.status === "APPROVED")
+    : Boolean(
+        appointment &&
+          appointment.status === "upcoming" &&
+          (appointment.modality === "video" || appointment.modality === "chat")
+      );
 
-  const modalityLabel =
-    appointment?.modality === "video"
+  const modalityLabel = isGroupSession
+    ? "Videollamada grupal"
+    : appointment?.modality === "video"
       ? "Videollamada"
       : appointment?.modality === "chat"
         ? "Chat"
@@ -307,17 +401,50 @@ export default function ChatSession() {
       })
     : "Sin fecha";
 
+  const groupStartDate = groupSession?.scheduledAt
+    ? new Date(groupSession.scheduledAt)
+    : null;
+
+  const groupDateLabel = groupStartDate
+    ? groupStartDate.toLocaleDateString("es-MX", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "Sin fecha";
+
+  const groupTimeLabel = groupStartDate
+    ? groupStartDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "--:--";
+
+  const sessionMetaLabel = isGroupSession
+    ? `${modalityLabel} · ${groupDateLabel} · ${groupTimeLabel}${groupSession?.durationMinutes ? ` · ${groupSession.durationMinutes} min` : ""}`
+    : `${modalityLabel} · ${appointmentDateLabel} · ${appointment?.time || "--:--"}`;
+
   const joinButtonLabel = isJoining
     ? "Conectando..."
-    : !appointment
-      ? "Cita no disponible"
-      : !canJoinVirtualRoom
-        ? appointment.modality === "presencial"
-          ? "Cita presencial (sin sala virtual)"
-          : "Sala disponible solo para citas próximas"
-        : appointment.modality === "chat"
-          ? "Entrar al chat en vivo"
-          : "Entrar a la videollamada";
+    : isGroupSession
+      ? !groupSession
+        ? "Sesión no disponible"
+        : !canJoinVirtualRoom
+          ? "Sesión grupal no disponible"
+          : "Entrar a la sesión grupal"
+      : !appointment
+        ? "Cita no disponible"
+        : !canJoinVirtualRoom
+          ? appointment.modality === "presencial"
+            ? "Cita presencial (sin sala virtual)"
+            : "Sala disponible solo para citas próximas"
+          : appointment.modality === "chat"
+            ? "Entrar al chat en vivo"
+            : "Entrar a la videollamada";
+  const sessionLoading = isGroupSession ? groupLoading : appointmentLoading;
+  const sessionError = isGroupSession ? groupError : appointmentError;
+  const sessionTitle = isGroupSession ? `Sesión grupal: ${partnerName}` : `Sesion con ${partnerName}`;
+  const cannotJoinLabel = isGroupSession
+    ? "Esta sesión grupal aún no está aprobada o disponible."
+    : "Esta sala solo está habilitada para citas próximas de modalidad video o chat.";
   const stageIsLive = stage === "live";
   const showDebugOverlay =
     import.meta.env.DEV || import.meta.env.VITE_ENABLE_WEBRTC_DEBUG === "true";
@@ -398,6 +525,10 @@ export default function ChatSession() {
 
       localStreamRef.current.addTrack(track);
 
+      if (isGroupSession) {
+        return true;
+      }
+
       for (const peerConnection of peerConnectionsRef.current.values()) {
         const sender = peerConnection
           .getSenders()
@@ -459,11 +590,260 @@ export default function ChatSession() {
     }));
   };
 
+  const requestSocket = (socket: Socket, eventName: string, payload: Record<string, unknown>) =>
+    new Promise<Record<string, any>>((resolve, reject) => {
+      socket.emit(eventName, payload, (response: { error?: string }) => {
+        if (!response) {
+          reject(new Error("Respuesta vacia del servidor"));
+          return;
+        }
+        if (response.error) {
+          reject(new Error(response.error));
+          return;
+        }
+        resolve(response as Record<string, any>);
+      });
+    });
+
+  const attachRemoteTrack = (userId: string, track: MediaStreamTrack) => {
+    const stream = remoteStreamsRef.current.get(userId) || new MediaStream();
+    if (!stream.getTracks().some((existing) => existing.id === track.id)) {
+      stream.addTrack(track);
+      remoteStreamsRef.current.set(userId, stream);
+      setRemoteStreamsVersion((value) => value + 1);
+    }
+  };
+
+  const detachRemoteTrack = (userId: string, trackId: string) => {
+    const stream = remoteStreamsRef.current.get(userId);
+    if (!stream) {
+      return;
+    }
+
+    const target = stream.getTracks().find((track) => track.id === trackId);
+    if (target) {
+      target.stop();
+      stream.removeTrack(target);
+    }
+
+    if (stream.getTracks().length === 0) {
+      remoteStreamsRef.current.delete(userId);
+    }
+
+    setRemoteStreamsVersion((value) => value + 1);
+  };
+
+  const createSfuTransport = async (
+    socket: Socket,
+    device: MediasoupTypes.Device,
+    direction: "send" | "recv"
+  ) => {
+    const response = await requestSocket(socket, "mediasoup:create-transport", {
+      roomId,
+      userId: selfUserId,
+      direction,
+    });
+
+    const transportOptions = response as Parameters<Device["createSendTransport"]>[0];
+    const transport = direction === "send"
+      ? device.createSendTransport(transportOptions)
+      : device.createRecvTransport(transportOptions);
+
+    transport.on("connect", ({ dtlsParameters }, callback, errback) => {
+      requestSocket(socket, "mediasoup:connect-transport", {
+        roomId,
+        transportId: transport.id,
+        dtlsParameters,
+      })
+        .then(() => callback())
+        .catch((error) => errback(error));
+    });
+
+    if (direction === "send") {
+      transport.on("produce", ({ kind, rtpParameters }, callback, errback) => {
+        requestSocket(socket, "mediasoup:produce", {
+          roomId,
+          transportId: transport.id,
+          userId: selfUserId,
+          kind,
+          rtpParameters,
+        })
+          .then((response) => callback({ id: response.id }))
+          .catch((error) => errback(error));
+      });
+    }
+
+    return transport;
+  };
+
+  const produceCurrentTracks = async () => {
+    if (!isGroupSession) {
+      return;
+    }
+
+    const transport = sfuSendTransportRef.current;
+    const stream = localStreamRef.current;
+    if (!transport || !stream) {
+      return;
+    }
+
+    for (const track of stream.getTracks()) {
+      const kind = track.kind;
+      const existing = sfuProducersRef.current.get(kind);
+      if (existing && !existing.closed) {
+        if (existing.track !== track) {
+          try {
+            await existing.replaceTrack({ track });
+          } catch {}
+        }
+        if (track.enabled) {
+          try {
+            existing.resume();
+          } catch {}
+        } else {
+          try {
+            existing.pause();
+          } catch {}
+        }
+        continue;
+      }
+
+      try {
+        const producer = await transport.produce({ track });
+        sfuProducersRef.current.set(kind, producer);
+        producer.on("transportclose", () => {
+          sfuProducersRef.current.delete(kind);
+        });
+      } catch (error) {
+        console.warn("No se pudo producir pista", error);
+      }
+    }
+  };
+
+  const consumeProducer = async (
+    socket: Socket,
+    payload: { producerId: string; userId: string; kind?: string }
+  ) => {
+    if (payload.userId === selfUserId) {
+      return;
+    }
+
+    if (sfuConsumersRef.current.has(payload.producerId)) {
+      return;
+    }
+
+    const device = sfuDeviceRef.current;
+    const transport = sfuRecvTransportRef.current;
+    if (!device || !transport) {
+      return;
+    }
+
+    try {
+      const response = await requestSocket(socket, "mediasoup:consume", {
+        roomId,
+        transportId: transport.id,
+        userId: selfUserId,
+        producerId: payload.producerId,
+        rtpCapabilities: device.rtpCapabilities,
+      });
+
+      const consumer = await transport.consume({
+        id: response.id,
+        producerId: response.producerId,
+        kind: response.kind,
+        rtpParameters: response.rtpParameters,
+      });
+
+      sfuConsumersRef.current.set(payload.producerId, { consumer, userId: payload.userId });
+      attachRemoteTrack(payload.userId, consumer.track);
+
+      consumer.on("transportclose", () => {
+        detachRemoteTrack(payload.userId, consumer.track.id);
+        sfuConsumersRef.current.delete(payload.producerId);
+      });
+
+    } catch (error) {
+      console.warn("No se pudo consumir productor", error);
+    }
+  };
+
+  const closeSfuConsumer = useCallback(async (socket: Socket | null, producerId: string) => {
+    const entry = sfuConsumersRef.current.get(producerId);
+    if (!entry) {
+      return;
+    }
+
+    try {
+      entry.consumer.close();
+    } catch {}
+
+    detachRemoteTrack(entry.userId, entry.consumer.track.id);
+    sfuConsumersRef.current.delete(producerId);
+
+    if (socket) {
+      socket.emit("mediasoup:close-consumer", {
+        roomId,
+        userId: selfUserId,
+        consumerId: entry.consumer.id,
+      });
+    }
+  }, [roomId, selfUserId]);
+
+  const startSfuSession = async (socket: Socket) => {
+    const device = sfuDeviceRef.current || new Device();
+    if (!sfuDeviceRef.current) {
+      const response = await requestSocket(socket, "mediasoup:get-router-rtp-capabilities", { roomId });
+      await device.load({ routerRtpCapabilities: response.rtpCapabilities });
+      sfuDeviceRef.current = device;
+    }
+
+    sfuSendTransportRef.current = await createSfuTransport(socket, device, "send");
+    sfuRecvTransportRef.current = await createSfuTransport(socket, device, "recv");
+
+    await produceCurrentTracks();
+
+    try {
+      const response = await requestSocket(socket, "mediasoup:get-producers", { roomId });
+      const producers = Array.isArray(response.producers) ? response.producers : [];
+      for (const producer of producers) {
+        await consumeProducer(socket, producer);
+      }
+    } catch (error) {
+      console.warn("No se pudieron cargar productores existentes", error);
+    }
+  };
+
+  const teardownSfu = useCallback(async () => {
+    const socket = socketRef.current;
+    const producers = Array.from(sfuProducersRef.current.values());
+    for (const producer of producers) {
+      try {
+        producer.close();
+      } catch {}
+    }
+    sfuProducersRef.current.clear();
+
+    const consumerEntries = Array.from(sfuConsumersRef.current.keys());
+    for (const producerId of consumerEntries) {
+      await closeSfuConsumer(socket, producerId);
+    }
+
+    sfuSendTransportRef.current?.close();
+    sfuRecvTransportRef.current?.close();
+    sfuSendTransportRef.current = null;
+    sfuRecvTransportRef.current = null;
+    sfuDeviceRef.current = null;
+  }, [closeSfuConsumer]);
+
   const teardownCall = useCallback(() => {
     socketRef.current?.emit("chat:leave-room", { roomId, userId: selfUserId });
     socketRef.current?.emit("webrtc:leave-room", { roomId, userId: selfUserId });
     socketRef.current?.disconnect();
     socketRef.current = null;
+
+    if (isGroupSession) {
+      void teardownSfu();
+    }
 
     for (const peerConnection of peerConnectionsRef.current.values()) {
       peerConnection.close();
@@ -489,7 +869,7 @@ export default function ChatSession() {
     setStage("lobby");
     setSeconds(0);
     startedRef.current = false;
-  }, [roomId, selfUserId]);
+  }, [roomId, selfUserId, isGroupSession, teardownSfu]);
 
   useEffect(() => {
     return () => {
@@ -679,7 +1059,7 @@ export default function ChatSession() {
   maybeStartOfferRef.current = maybeStartOffer;
 
   useEffect(() => {
-    if (stage !== "live") {
+    if (stage !== "live" || isGroupSession) {
       return;
     }
 
@@ -720,9 +1100,11 @@ export default function ChatSession() {
 
     if (!canJoinVirtualRoom) {
       setStatus(
-        appointment?.modality === "presencial"
-          ? "Esta cita es presencial y no tiene sala virtual."
-          : "Solo puedes entrar a salas de citas próximas."
+        isGroupSession
+          ? "Esta sesión grupal no está disponible en este momento."
+          : appointment?.modality === "presencial"
+            ? "Esta cita es presencial y no tiene sala virtual."
+            : "Solo puedes entrar a salas de citas próximas."
       );
       return;
     }
@@ -749,18 +1131,23 @@ export default function ChatSession() {
       socketRef.current = socket;
 
       // 3. Unirse a la sala
-      const handleSocketConnected = () => {
+      const handleSocketConnected = async () => {
         if (startedRef.current) {
           return;
         }
 
         startedRef.current = true;
         setStage("live");
-        setStatus((prev) =>
-          prev.includes("Sin acceso")
-            ? "Conectado sin camara/microfono. Esperando al otro participante..."
-            : "Conectado. Esperando al otro participante..."
-        );
+        setStatus((prev) => {
+          if (prev.includes("Sin acceso")) {
+            return isGroupSession
+              ? "Conectado sin camara/microfono. Preparando SFU..."
+              : "Conectado sin camara/microfono. Esperando al otro participante...";
+          }
+          return isGroupSession
+            ? "Conectado. Preparando SFU..."
+            : "Conectado. Esperando al otro participante...";
+        });
 
         socket.emit("chat:join-room", {
           roomId,
@@ -768,11 +1155,26 @@ export default function ChatSession() {
           role: selfRole,
         });
 
-        socket.emit("webrtc:join-room", {
-          roomId,
-          userId: selfUserId,
-          role: selfRole,
-        });
+        if (!isGroupSession) {
+          socket.emit("webrtc:join-room", {
+            roomId,
+            userId: selfUserId,
+            role: selfRole,
+          });
+          return;
+        }
+
+        try {
+          await startSfuSession(socket);
+          setStatus((prev) =>
+            prev.includes("Sin acceso")
+              ? "SFU listo (modo escucha). Esperando participantes..."
+              : "SFU listo. Esperando participantes..."
+          );
+        } catch (error) {
+          console.error("Error iniciando SFU:", error);
+          setStatus("No se pudo inicializar SFU. Intenta de nuevo.");
+        }
       };
 
       socket.on("disconnect", () => {
@@ -789,12 +1191,17 @@ export default function ChatSession() {
         const roomParticipants = dedupeParticipants(payload.participants || []);
         setParticipants(roomParticipants);
 
-        for (const participant of roomParticipants) {
-          void maybeStartOffer(participant.userId);
+        if (!isGroupSession) {
+          for (const participant of roomParticipants) {
+            void maybeStartOffer(participant.userId);
+          }
         }
       });
 
       socket.on("webrtc:participants", (payload: { participants: RoomParticipant[] }) => {
+        if (isGroupSession) {
+          return;
+        }
         const roomParticipants = dedupeParticipants(payload.participants || []);
         setParticipants(roomParticipants);
 
@@ -804,6 +1211,9 @@ export default function ChatSession() {
       });
 
       socket.on("webrtc:existing-participants", async (payload: { participants: RoomParticipant[] }) => {
+        if (isGroupSession) {
+          return;
+        }
         const roomParticipants = payload.participants || [];
         if (roomParticipants.length > 0) {
           setParticipants((previous) => {
@@ -821,6 +1231,9 @@ export default function ChatSession() {
       });
 
       socket.on("webrtc:user-joined", async (payload: { user?: RoomParticipant }) => {
+        if (isGroupSession) {
+          return;
+        }
         const joinedUser = payload.user;
         if (!joinedUser || joinedUser.userId === selfUserId) {
           return;
@@ -837,6 +1250,9 @@ export default function ChatSession() {
       });
 
       socket.on("webrtc:user-left", (payload: { userId?: string }) => {
+        if (isGroupSession) {
+          return;
+        }
         const remoteUserId = payload.userId;
         if (!remoteUserId) {
           return;
@@ -848,6 +1264,9 @@ export default function ChatSession() {
       socket.on(
         "webrtc:offer",
         async (payload: { senderId: string; targetUserId?: string; sdp: RTCSessionDescriptionInit }) => {
+        if (isGroupSession) {
+          return;
+        }
         if (payload.targetUserId && payload.targetUserId !== selfUserId) {
           return;
         }
@@ -908,6 +1327,9 @@ export default function ChatSession() {
       socket.on(
         "webrtc:answer",
         async (payload: { senderId: string; targetUserId?: string; sdp: RTCSessionDescriptionInit }) => {
+        if (isGroupSession) {
+          return;
+        }
         if (payload.targetUserId && payload.targetUserId !== selfUserId) {
           return;
         }
@@ -939,6 +1361,9 @@ export default function ChatSession() {
       socket.on(
         "webrtc:ice-candidate",
         async (payload: { senderId: string; targetUserId?: string; candidate?: RTCIceCandidateInit }) => {
+        if (isGroupSession) {
+          return;
+        }
         if (payload.targetUserId && payload.targetUserId !== selfUserId) {
           return;
         }
@@ -973,10 +1398,32 @@ export default function ChatSession() {
       );
 
       socket.on("webrtc:error", (payload: { message?: string }) => {
+        if (isGroupSession) {
+          return;
+        }
         if (payload?.message) {
           setStatus(payload.message);
         }
       });
+
+      if (isGroupSession) {
+        socket.on("mediasoup:producer-added", (payload: { producerId: string; userId: string; kind?: string }) => {
+          void consumeProducer(socket, payload);
+        });
+
+        socket.on("mediasoup:producer-closed", (payload: { producerId?: string }) => {
+          if (!payload?.producerId) {
+            return;
+          }
+          void closeSfuConsumer(socket, payload.producerId);
+        });
+
+        socket.on("mediasoup:error", (payload: { message?: string }) => {
+          if (payload?.message) {
+            setStatus(payload.message);
+          }
+        });
+      }
 
       socket.on(
         "chat:receive-message",
@@ -997,7 +1444,7 @@ export default function ChatSession() {
 
       // If socket connected before listener registration, force the join flow.
       if (socket.connected) {
-        handleSocketConnected();
+        void handleSocketConnected();
       }
 
       await loadRoomHistory();
@@ -1027,6 +1474,23 @@ export default function ChatSession() {
     localStreamRef.current?.getAudioTracks().forEach((track) => {
       track.enabled = next;
     });
+
+    if (isGroupSession) {
+      const producer = sfuProducersRef.current.get("audio");
+      if (producer) {
+        if (next) {
+          try {
+            producer.resume();
+          } catch {}
+        } else {
+          try {
+            producer.pause();
+          } catch {}
+        }
+      } else if (next) {
+        await produceCurrentTracks();
+      }
+    }
   };
 
   const toggleCamera = async () => {
@@ -1045,6 +1509,23 @@ export default function ChatSession() {
     localStreamRef.current?.getVideoTracks().forEach((track) => {
       track.enabled = next;
     });
+
+    if (isGroupSession) {
+      const producer = sfuProducersRef.current.get("video");
+      if (producer) {
+        if (next) {
+          try {
+            producer.resume();
+          } catch {}
+        } else {
+          try {
+            producer.pause();
+          } catch {}
+        }
+      } else if (next) {
+        await produceCurrentTracks();
+      }
+    }
   };
 
   const sendMessage = () => {
@@ -1116,22 +1597,22 @@ export default function ChatSession() {
 
   const debugRows = Object.entries(debugByPeer);
 
-  if (appointmentLoading) {
+  if (sessionLoading) {
     return (
       <div className="fixed inset-0 z-[70] flex items-center justify-center px-6" style={{ background: "#EEF4F7" }}>
         <div className="rounded-2xl border bg-white px-6 py-5 text-center" style={{ borderColor: "rgba(26,74,92,0.12)" }}>
-          <p style={{ color: "#1A4A5C", fontWeight: 700 }}>Cargando datos de la cita...</p>
+          <p style={{ color: "#1A4A5C", fontWeight: 700 }}>Cargando datos de la sesión...</p>
         </div>
       </div>
     );
   }
 
-  if (appointmentError) {
+  if (sessionError) {
     return (
       <div className="fixed inset-0 z-[70] flex items-center justify-center px-6" style={{ background: "#EEF4F7" }}>
         <div className="max-w-xl w-full rounded-2xl border bg-white p-6" style={{ borderColor: "rgba(239,68,68,0.2)" }}>
           <p className="text-red-600" style={{ fontWeight: 700 }}>No fue posible abrir esta sala</p>
-          <p className="mt-2 text-slate-600" style={{ fontSize: "0.9rem" }}>{appointmentError}</p>
+          <p className="mt-2 text-slate-600" style={{ fontSize: "0.9rem" }}>{sessionError}</p>
           <button
             onClick={() => navigate(-1)}
             className="mt-5 px-4 py-2.5 rounded-xl text-white"
@@ -1176,11 +1657,11 @@ export default function ChatSession() {
               Sala de videollamada
             </p>
             <h1 className="text-3xl md:text-4xl mt-3" style={{ fontWeight: 800 }}>
-              Sesion con {partnerName}
+              {sessionTitle}
             </h1>
 
             <p className="mt-3" style={{ color: "#56639B", fontSize: "0.86rem" }}>
-              {modalityLabel} · {appointmentDateLabel} · {appointment?.time || "--:--"}
+              {sessionMetaLabel}
             </p>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
@@ -1250,7 +1731,7 @@ export default function ChatSession() {
 
             {!canJoinVirtualRoom && (
               <p className="mt-3" style={{ color: "#DC2626", fontSize: "0.82rem", fontWeight: 600 }}>
-                Esta sala solo está habilitada para citas próximas de modalidad video o chat.
+                {cannotJoinLabel}
               </p>
             )}
           </div>
