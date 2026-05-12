@@ -195,7 +195,7 @@ export default function PsychGroupSessions() {
                   )}
                   {session.status === "APPROVED" && (
                     <button
-                      onClick={() => alert("🔜 Próximamente: videollamada grupal disponible aquí")}
+                      onClick={() => navigate(`/panel-psicologo/sesion-grupal/${session.id}?group=true`)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-white bg-teal-600 hover:bg-teal-700 text-sm"
                     >
                       <Video size={16} />

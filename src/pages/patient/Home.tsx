@@ -427,7 +427,10 @@ export default function Home() {
                   {enrollingSessionId === selectedSession.id ? "Inscribiendo..." : (selectedSession.currentParticipants ?? 0) >= (selectedSession.maxParticipants ?? 0) ? "Llena" : "Inscribirme"}
                 </button>
                 <button
-                  onClick={() => alert("🔜 Próximamente: videollamada grupal disponible aquí")}
+                  onClick={() => {
+                    closeModal();
+                    navigate(`/paciente/sesion-grupal/${selectedSession.id}?group=true`);
+                  }}
                   className="flex-1 py-2.5 rounded-xl border border-teal-300 text-teal-700 font-semibold flex items-center justify-center gap-2 hover:bg-teal-50"
                 >
                   <Video size={16} /> Unirse a videollamada
