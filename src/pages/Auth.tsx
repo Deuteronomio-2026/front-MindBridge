@@ -11,7 +11,6 @@ const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
 const MINT = "#A8D5C2";
 const FOG = "#EEF4F7";
-const CORAL = "#E8856A";
 
 interface RegisterData {
   name: string;
