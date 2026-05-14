@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Calendar, Video, Users, MessageCircle, Clock, XCircle, CheckCircle, AlertCircle, Plus } from "lucide-react";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import type { Appointment } from "../../types/user";
 import { schedulingService, type SchedulingAppointment } from "../../service/schedulingService";
 
@@ -40,9 +41,16 @@ const statusConfig = {
   },
 };
 
-function AppointmentCard({ appointment, onCancel }: { appointment: Appointment; onCancel: (id: string) => void }) {
+function AppointmentCard({
+  appointment,
+  onRequestCancel,
+  cancelling,
+}: {
+  appointment: Appointment;
+  onRequestCancel: (appointment: Appointment) => void;
+  cancelling: boolean;
+}) {
   const navigate = useNavigate();
-  const [showCancel, setShowCancel] = useState(false);
   const modality = modalityColors[appointment.modality];
   const ModalityIcon = modalityIcons[appointment.modality];
   const status = statusConfig[appointment.status];
@@ -130,39 +138,21 @@ function AppointmentCard({ appointment, onCancel }: { appointment: Appointment; 
           {(appointment.modality === "video" || appointment.modality === "chat") && (
             <button
               onClick={() => navigate(`/paciente/chat/${appointment.id}`)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white transition-colors"
+              className="flex-1 py-2.5 rounded-xl text-white transition-colors flex items-center justify-center gap-1.5"
               style={{ background: TEAL, fontWeight: 600, fontSize: "0.825rem" }}
             >
               {appointment.modality === "video" ? <Video size={14} /> : <MessageCircle size={14} />}
               {appointment.modality === "video" ? "Iniciar sesión" : "Abrir chat"}
             </button>
           )}
-          {!showCancel ? (
-            <button
-              onClick={() => setShowCancel(true)}
-              className="px-4 py-2.5 border rounded-xl transition-colors"
-              style={{ borderColor: "#e2e8f0", color: "#94a3b8", fontWeight: 600, fontSize: "0.825rem" }}
-            >
-              Cancelar
-            </button>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={() => { onCancel(appointment.id); setShowCancel(false); }}
-                className="px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors"
-                style={{ fontWeight: 600, fontSize: "0.825rem" }}
-              >
-                Confirmar
-              </button>
-              <button
-                onClick={() => setShowCancel(false)}
-                className="px-3 py-2.5 border rounded-xl transition-colors"
-                style={{ borderColor: "#e2e8f0", color: "#94a3b8", fontSize: "0.825rem" }}
-              >
-                No
-              </button>
-            </div>
-          )}
+          <button
+                        onClick={() => onRequestCancel(appointment)}
+            disabled={cancelling}
+            className="flex-1 py-2.5 rounded-xl border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ borderColor: "#FECACA", color: "#DC2626", fontWeight: 600, fontSize: "0.825rem", background: "#FFF5F5" }}
+          >
+            {cancelling ? "Cancelando..." : "Cancelar sesión"}
+          </button>
         </div>
       )}
     </div>
@@ -175,6 +165,8 @@ export default function Appointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"upcoming" | "completed" | "cancelled">("upcoming");
+  const [confirmingAppointment, setConfirmingAppointment] = useState<SchedulingAppointment | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadAppointments = async () => {
@@ -195,11 +187,17 @@ export default function Appointments() {
   }, []);
 
   const cancelAppointment = async (id: string) => {
+    setCancellingId(id);
+    setError(null);
+
     try {
       await schedulingService.cancelAppointment(id);
       setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status: "cancelled" } : a)));
     } catch {
       setError("No se pudo cancelar la cita.");
+    } finally {
+      setCancellingId(null);
+      setConfirmingAppointment(null);
     }
   };
 
@@ -334,7 +332,8 @@ export default function Appointments() {
               <AppointmentCard
                 key={apt.id}
                 appointment={apt}
-                onCancel={cancelAppointment}
+                  cancelling={cancellingId === apt.id}
+                  onRequestCancel={(appointment) => setConfirmingAppointment(appointment)}
               />
             ))}
           </div>
@@ -361,6 +360,29 @@ export default function Appointments() {
             </button>
           </div>
         )}
+
+        <ConfirmDialog
+          open={confirmingAppointment !== null}
+          title="Cancelar sesión"
+          message={
+            confirmingAppointment
+              ? `Vas a cancelar tu cita con ${confirmingAppointment.psychologistName} del ${new Date(`${confirmingAppointment.date}T00:00:00`).toLocaleDateString("es-MX", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })} a las ${confirmingAppointment.time}. Esta acción no se puede deshacer.`
+              : "Vas a cancelar esta cita. Esta acción no se puede deshacer."
+          }
+          confirmLabel="Sí, cancelar"
+          cancelLabel="Volver"
+          loading={cancellingId === confirmingAppointment?.id}
+          onClose={() => setConfirmingAppointment(null)}
+          onConfirm={() => {
+            if (confirmingAppointment) {
+              void cancelAppointment(confirmingAppointment.id);
+            }
+          }}
+        />
       </div>
     </div>
   );

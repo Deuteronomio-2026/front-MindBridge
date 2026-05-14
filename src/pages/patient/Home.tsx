@@ -27,28 +27,32 @@ const getGroupImage = (sessionId: string) => {
   return GROUP_IMAGES[index];
 };
 
-const mapToMockFormat = (p: Psychologist) => ({
-  id: p.id,
-  name: `${p.name} ${p.lastName}`,
-  title: p.specialization,
-  specialties: [p.specialization],
-  location: p.address || p.officeLocation || "Ubicación no especificada",
-  rating: 4.5,
-  reviewCount: 0,
-  photo: "https://via.placeholder.com/120",
-  verified: p.verificationStatus === "VERIFIED",
-  experience: p.yearsOfExperience,
-  bio: p.biography || "",
-  education: [],
-  languages: p.languages,
-  prices: {
-    video: p.consultationFee,
-    presencial: p.consultationFee + 50,
-    chat: p.consultationFee - 30,
-  },
-  schedule: {},
-  reviews: [],
-});
+const mapToMockFormat = (p: Psychologist) => {
+  const fee = Number(p.consultationFee) || 0;
+
+  return {
+    id: p.id,
+    name: `${p.name} ${p.lastName}`,
+    title: p.specialization,
+    specialties: [p.specialization],
+    location: p.address || p.officeLocation || "Ubicación no especificada",
+    rating: 4.5,
+    reviewCount: 0,
+    photo: "https://via.placeholder.com/120",
+    verified: p.verificationStatus === "VERIFIED",
+    experience: p.yearsOfExperience,
+    bio: p.biography || "",
+    education: [],
+    languages: p.languages,
+    prices: {
+      video: fee,
+      presencial: fee + 50,
+      chat: Math.max(0, fee - 30),
+    },
+    schedule: {},
+    reviews: [],
+  };
+};
 
 export default function Home() {
   const navigate = useNavigate();
