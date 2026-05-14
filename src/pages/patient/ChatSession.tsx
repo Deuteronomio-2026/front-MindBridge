@@ -590,18 +590,18 @@ export default function ChatSession() {
     }));
   };
 
-  const requestSocket = (socket: Socket, eventName: string, payload: Record<string, unknown>) =>
-    new Promise<Record<string, any>>((resolve, reject) => {
-      socket.emit(eventName, payload, (response: { error?: string }) => {
+  const requestSocket = <T = unknown>(socket: Socket, eventName: string, payload: Record<string, unknown>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      socket.emit(eventName, payload, (response: { error?: string } | null | undefined) => {
         if (!response) {
           reject(new Error("Respuesta vacia del servidor"));
           return;
         }
-        if (response.error) {
-          reject(new Error(response.error));
+        if ((response as { error?: string }).error) {
+          reject(new Error((response as { error?: string }).error!));
           return;
         }
-        resolve(response as Record<string, any>);
+        resolve(response as unknown as T);
       });
     });
 
@@ -661,7 +661,7 @@ export default function ChatSession() {
 
     if (direction === "send") {
       transport.on("produce", ({ kind, rtpParameters }, callback, errback) => {
-        requestSocket(socket, "mediasoup:produce", {
+        requestSocket<{ id: string }>(socket, "mediasoup:produce", {
           roomId,
           transportId: transport.id,
           userId: selfUserId,
@@ -690,20 +690,20 @@ export default function ChatSession() {
     for (const track of stream.getTracks()) {
       const kind = track.kind;
       const existing = sfuProducersRef.current.get(kind);
-      if (existing && !existing.closed) {
+          if (existing && !existing.closed) {
         if (existing.track !== track) {
           try {
             await existing.replaceTrack({ track });
-          } catch {}
+          } catch (err) { void err; }
         }
         if (track.enabled) {
           try {
             existing.resume();
-          } catch {}
+          } catch (err) { void err; }
         } else {
           try {
             existing.pause();
-          } catch {}
+          } catch (err) { void err; }
         }
         continue;
       }
@@ -738,8 +738,8 @@ export default function ChatSession() {
       return;
     }
 
-    try {
-      const response = await requestSocket(socket, "mediasoup:consume", {
+      try {
+      const response = await requestSocket<{ id: string; producerId: string; kind: string; rtpParameters: unknown }>(socket, "mediasoup:consume", {
         roomId,
         transportId: transport.id,
         userId: selfUserId,
@@ -747,12 +747,15 @@ export default function ChatSession() {
         rtpCapabilities: device.rtpCapabilities,
       });
 
+      const resp = response as Record<string, unknown>;
+      /* eslint-disable @typescript-eslint/no-explicit-any */
       const consumer = await transport.consume({
-        id: response.id,
-        producerId: response.producerId,
-        kind: response.kind,
-        rtpParameters: response.rtpParameters,
+        id: (resp as any).id,
+        producerId: (resp as any).producerId,
+        kind: (resp as any).kind,
+        rtpParameters: (resp as any).rtpParameters,
       });
+      /* eslint-enable @typescript-eslint/no-explicit-any */
 
       sfuConsumersRef.current.set(payload.producerId, { consumer, userId: payload.userId });
       attachRemoteTrack(payload.userId, consumer.track);
@@ -775,7 +778,7 @@ export default function ChatSession() {
 
     try {
       entry.consumer.close();
-    } catch {}
+    } catch (err) { void err; }
 
     detachRemoteTrack(entry.userId, entry.consumer.track.id);
     sfuConsumersRef.current.delete(producerId);
@@ -792,8 +795,8 @@ export default function ChatSession() {
   const startSfuSession = async (socket: Socket) => {
     const device = sfuDeviceRef.current || new Device();
     if (!sfuDeviceRef.current) {
-      const response = await requestSocket(socket, "mediasoup:get-router-rtp-capabilities", { roomId });
-      await device.load({ routerRtpCapabilities: response.rtpCapabilities });
+      const response = await requestSocket<{ rtpCapabilities: unknown }>(socket, "mediasoup:get-router-rtp-capabilities", { roomId });
+      await device.load({ routerRtpCapabilities: response.rtpCapabilities as any });
       sfuDeviceRef.current = device;
     }
 
@@ -803,10 +806,17 @@ export default function ChatSession() {
     await produceCurrentTracks();
 
     try {
-      const response = await requestSocket(socket, "mediasoup:get-producers", { roomId });
+      const response = await requestSocket<{ producers?: unknown[] }>(socket, "mediasoup:get-producers", { roomId });
       const producers = Array.isArray(response.producers) ? response.producers : [];
       for (const producer of producers) {
-        await consumeProducer(socket, producer);
+        if (!producer || typeof producer !== "object") continue;
+        const p = producer as Record<string, unknown>;
+        const payload = {
+          producerId: String(p.producerId ?? p.id ?? ""),
+          userId: String(p.userId ?? p.user ?? ""),
+          kind: typeof p.kind === "string" ? String(p.kind) : undefined,
+        };
+        await consumeProducer(socket, payload);
       }
     } catch (error) {
       console.warn("No se pudieron cargar productores existentes", error);
@@ -819,7 +829,7 @@ export default function ChatSession() {
     for (const producer of producers) {
       try {
         producer.close();
-      } catch {}
+      } catch (err) { void err; }
     }
     sfuProducersRef.current.clear();
 
@@ -1481,11 +1491,11 @@ export default function ChatSession() {
         if (next) {
           try {
             producer.resume();
-          } catch {}
+          } catch (err) { void err; }
         } else {
           try {
             producer.pause();
-          } catch {}
+          } catch (err) { void err; }
         }
       } else if (next) {
         await produceCurrentTracks();
@@ -1516,11 +1526,11 @@ export default function ChatSession() {
         if (next) {
           try {
             producer.resume();
-          } catch {}
+          } catch (err) { void err; }
         } else {
           try {
             producer.pause();
-          } catch {}
+          } catch (err) { void err; }
         }
       } else if (next) {
         await produceCurrentTracks();

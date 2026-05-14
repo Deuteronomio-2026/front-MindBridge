@@ -47,6 +47,8 @@ export default function PsychGroupSessions() {
     }
   };
 
+  // loadSessions uses psychologistId; including psychologistId in deps is sufficient.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSessions();
   }, [psychologistId]);

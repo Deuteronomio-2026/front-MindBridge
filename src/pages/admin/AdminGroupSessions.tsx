@@ -45,6 +45,7 @@ export default function AdminGroupSessions() {
       await groupSessionService.approveGroupSession(sessionId);
       await loadSessions();
     } catch (err) {
+      void err;
       setError("Error al aprobar la sesión.");
     } finally {
       setActionLoading(null);
@@ -58,6 +59,7 @@ export default function AdminGroupSessions() {
       await groupSessionService.cancelGroupSession(sessionId);
       await loadSessions();
     } catch (err) {
+      void err;
       setError("Error al cancelar la sesión.");
     } finally {
       setActionLoading(null);
@@ -71,6 +73,7 @@ export default function AdminGroupSessions() {
       await groupSessionService.deleteGroupSession(sessionId);
       await loadSessions();
     } catch (err) {
+      void err;
       setError("Error al eliminar la sesión.");
     } finally {
       setActionLoading(null);
