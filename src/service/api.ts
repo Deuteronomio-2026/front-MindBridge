@@ -33,7 +33,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         // Redirigir al login
         localStorage.clear();
-        window.location.href = '/login';
+        window.location.href = '/auth';
         return Promise.reject(refreshError);
       }
     }

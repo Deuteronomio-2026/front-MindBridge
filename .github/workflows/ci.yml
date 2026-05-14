@@ -12,12 +12,16 @@ on:
       - develop
 
 jobs:
-  build-and-lint:
-    name: Build, Lint & Type Check
+  quality:
+    name: Quality checks
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 
     steps:
-      - name: Checkout código
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -26,11 +30,41 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: npm install
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
+
+      - name: SonarCloud scan
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' && env.SONAR_PROJECT_KEY != '' }}
+        uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+            -Dsonar.projectName=MindBridge Frontend
+            -Dsonar.sources=src
+            -Dsonar.tests=src
+            -Dsonar.test.inclusions=**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx
+            -Dsonar.exclusions=dist/**,node_modules/**,coverage/**,src/**/*.test.ts,src/**/*.test.tsx,src/**/*.spec.ts,src/**/*.spec.tsx
+            -Dsonar.coverage.exclusions=eslint.config.js,eslintrc.cjs,vite.config.ts,src/app/**,src/components/**,src/context/**,src/data/**,src/hooks/**,src/main.tsx,src/pages/**,src/types/**
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+      - name: SonarCloud quality gate
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' && env.SONAR_PROJECT_KEY != '' }}
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
