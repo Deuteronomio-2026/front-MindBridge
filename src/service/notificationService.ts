@@ -6,9 +6,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 export interface Notification {
   id: string;
   userId: string;
-  title: string;
+  type: string;
   message: string;
-  type: 'APPOINTMENT' | 'GROUP_SESSION' | 'OFFER' | 'SYSTEM';
   read: boolean;
   createdAt: string;
 }
@@ -19,9 +18,8 @@ export const notificationService = {
     return response.data;
   },
 
-  // Opcional: marcar como leída (si tu backend lo soporta)
-  markAsRead: async (notificationId: string): Promise<void> => {
-    await axios.patch(`${API_BASE_URL}/notifications/${notificationId}/read`);
+  markAsRead: async (userId: string, notificationId: string): Promise<void> => {
+    await axios.patch(`${API_BASE_URL}/notifications/${userId}/${notificationId}/read`);
   },
 
   markAllAsRead: async (userId: string): Promise<void> => {

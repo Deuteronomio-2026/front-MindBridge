@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router";
 import { Brain, Calendar, User, Menu, X, ChevronDown, Bell, LogOut } from "lucide-react";
 import { useRealUser } from "../hooks/useRealUser";
 import { notificationService, type Notification } from "../service/notificationService";
+import { getNotificationTitle, formatRelativeDate } from "../helpers/notificationHelpers";
 
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
@@ -17,12 +18,10 @@ export function Navbar() {
   const location = useLocation();
   const { profile, loading, role } = useRealUser();
 
-  // Estados para notificaciones reales
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [fetching, setFetching] = useState(false);
 
-  // Cargar notificaciones periódicamente (polling cada 30 segundos)
   useEffect(() => {
     if (!profile?.id) return;
 
@@ -49,11 +48,23 @@ export function Navbar() {
     if (!profile?.id) return;
     try {
       await notificationService.markAllAsRead(profile.id);
-      // Actualizar estado local
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (error) {
       console.error("Error marking all as read:", error);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    if (!profile?.id) return;
+    try {
+      await notificationService.markAsRead(profile.id, notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(prev - 1, 0));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
     }
   };
 
@@ -113,7 +124,7 @@ export function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
-            {/* Notificaciones reales */}
+            {/* Notificaciones */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -153,6 +164,7 @@ export function Navbar() {
                     notifications.map((n) => (
                       <div
                         key={n.id}
+                        onClick={() => handleMarkAsRead(n.id)}
                         className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
                       >
                         <div
@@ -160,10 +172,10 @@ export function Navbar() {
                           style={{ background: n.read ? "#cbd5e1" : CORAL }}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-slate-700 text-sm font-medium">{n.title}</p>
+                          <p className="text-slate-700 text-sm font-medium">{getNotificationTitle(n.type)}</p>
                           <p className="text-slate-500 text-xs">{n.message}</p>
                           <p className="text-slate-400 text-xs mt-1">
-                            {new Date(n.createdAt).toLocaleString()}
+                            {formatRelativeDate(n.createdAt)}
                           </p>
                         </div>
                       </div>

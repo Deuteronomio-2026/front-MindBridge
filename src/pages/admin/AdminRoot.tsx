@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useRealUser } from "../../hooks/useRealUser";
 import { notificationService, type Notification } from "../../service/notificationService";
+import { getNotificationTitle, formatRelativeDate } from "../../helpers/notificationHelpers";
 
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
@@ -26,7 +27,7 @@ export default function AdminRoot() {
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, loading } = useRealUser(); // Obtener perfil (incluye id del admin)
+  const { profile, loading } = useRealUser();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -37,7 +38,7 @@ export default function AdminRoot() {
     return location.pathname.startsWith(href);
   };
 
-  // Cargar notificaciones reales del administrador
+  // Polling notificaciones
   useEffect(() => {
     if (!profile?.id) return;
 
@@ -56,7 +57,7 @@ export default function AdminRoot() {
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // Polling cada 30s
+    const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, [profile?.id]);
 
@@ -68,6 +69,19 @@ export default function AdminRoot() {
       setUnreadCount(0);
     } catch (error) {
       console.error("Error marking all as read:", error);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    if (!profile?.id) return;
+    try {
+      await notificationService.markAsRead(profile.id, notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(prev - 1, 0));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
     }
   };
 
@@ -116,7 +130,7 @@ export default function AdminRoot() {
 
             {/* Right side */}
             <div className="flex items-center gap-2">
-              {/* Notificaciones reales */}
+              {/* Notificaciones */}
               <div className="relative">
                 <button
                   onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
@@ -153,17 +167,23 @@ export default function AdminRoot() {
                       notifications.map((n) => (
                         <div
                           key={n.id}
+                          onClick={() => handleMarkAsRead(n.id)}
                           className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
                         >
                           <div
                             className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
                             style={{ background: n.read ? "#cbd5e1" : CORAL }}
                           />
+
                           <div className="flex-1 min-w-0">
-                            <p className="text-slate-700 text-sm font-medium">{n.title}</p>
+                            <p className="text-slate-700 text-sm font-medium">
+                              {getNotificationTitle(n.type)}
+                            </p>
+
                             <p className="text-slate-500 text-xs">{n.message}</p>
+
                             <p className="text-slate-400 text-xs mt-1">
-                              {new Date(n.createdAt).toLocaleString()}
+                              {formatRelativeDate(n.createdAt)}
                             </p>
                           </div>
                         </div>
@@ -201,7 +221,7 @@ export default function AdminRoot() {
                 )}
               </div>
 
-              {/* Botón menú móvil */}
+              {/* Mobile menu button */}
               <button className="md:hidden p-2 rounded-lg hover:bg-slate-50" onClick={() => setMobileOpen(!mobileOpen)}>
                 {mobileOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
@@ -209,7 +229,7 @@ export default function AdminRoot() {
           </div>
         </div>
 
-        {/* Menú móvil */}
+        {/* Mobile menu */}
         {mobileOpen && (
           <div className="md:hidden bg-white border-t px-4 py-4 flex flex-col gap-1" style={{ borderColor: "rgba(26,74,92,0.1)" }}>
             {navLinks.map((link) => {
@@ -234,7 +254,7 @@ export default function AdminRoot() {
           </div>
         )}
 
-        {/* Fondo para cerrar modales */}
+        {/* Backdrop */}
         {(profileOpen || notifOpen) && (
           <div className="fixed inset-0 z-40" onClick={() => { setProfileOpen(false); setNotifOpen(false); }} />
         )}
