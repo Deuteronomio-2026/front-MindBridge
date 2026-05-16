@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, Save, User, Mail, FileText, Check, AlertCircle, Loader2 } from "lucide-react";
+import { Camera, Save, User, Mail, FileText, Check, AlertCircle, Loader2, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useRealUser } from "../hooks/useRealUser";
+import { userService } from "../service/userService";
 import type { Psychologist, Patient } from "../types/user";
 
 const TEAL = "#1A4A5C";
@@ -10,6 +12,7 @@ const FOG = "#EEF4F7";
 
 export default function UserProfile() {
   const { profile, loading, error: fetchError, updateProfile, refetch, role } = useRealUser();
+  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [bio, setBio] = useState("");
@@ -20,6 +23,8 @@ export default function UserProfile() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -104,6 +109,29 @@ export default function UserProfile() {
       setErrors({ general: "Error al guardar los cambios. Intenta de nuevo." });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!profile) return;
+
+    setDeleting(true);
+    try {
+      if (role === 'PSYCHOLOGIST') {
+        await userService.deletePsychologist(profile.id);
+      } else if (role === 'PATIENT') {
+        await userService.deletePatient(profile.id);
+      }
+
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      navigate('/auth');
+    } catch (err) {
+      console.error("Error eliminando cuenta:", err);
+      setErrors({ general: "Error al eliminar la cuenta. Intenta de nuevo." });
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -269,6 +297,27 @@ export default function UserProfile() {
         <button onClick={handleSave} disabled={saving} className="w-full py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-70" style={{ background: saved ? SAGE : CORAL, fontWeight: 700, fontSize: "0.95rem" }}>
           {saving ? <><Loader2 size={18} className="animate-spin" /> Guardando...</> : saved ? <><Check size={18} /> ¡Guardado!</> : <><Save size={18} /> Guardar cambios</>}
         </button>
+
+        <button onClick={() => setShowDeleteModal(true)} className="w-full py-4 text-white rounded-xl transition-colors flex items-center justify-center gap-2 hover:opacity-90 mt-4 bg-red-500 hover:bg-red-600" style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+          <Trash2 size={18} /> Eliminar cuenta
+        </button>
+
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+              <h3 className="text-slate-900 text-lg" style={{ fontWeight: 700 }}>¿Eliminar cuenta?</h3>
+              <p className="text-slate-600 mt-2 text-sm">Esta acción es irreversible. Se eliminarán todos tus datos de forma permanente.</p>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowDeleteModal(false)} disabled={deleting} className="flex-1 py-3 px-4 rounded-xl border" style={{ borderColor: "rgba(26,74,92,0.2)", color: TEAL, fontWeight: 600, fontSize: "0.9rem" }}>
+                  Cancelar
+                </button>
+                <button onClick={handleDeleteAccount} disabled={deleting} className="flex-1 py-3 px-4 rounded-xl text-white bg-red-500 hover:bg-red-600 disabled:opacity-70 transition-colors flex items-center justify-center gap-2" style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                  {deleting ? <><Loader2 size={16} className="animate-spin" /> Eliminando...</> : <>Eliminar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

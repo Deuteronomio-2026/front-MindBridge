@@ -45,9 +45,18 @@ export interface RegisterRequest {
   consultationDuration?: number;
 }
 
+export interface GoogleLoginRequest {
+  code: string;
+  role: 'PATIENT' | 'PSYCHOLOGIST';
+}
+
 export const authService = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
     const response = await axios.post(`${API_BASE_URL}/user/auth/login`, credentials);
+    return response.data;
+  },
+  googleLogin: async (googleData: GoogleLoginRequest): Promise<AuthResponse> => {
+    const response = await axios.post(`${API_BASE_URL}/auth/google/login`, googleData);
     return response.data;
   },
   register: async (userData: RegisterRequest): Promise<RegisterResponse> => {

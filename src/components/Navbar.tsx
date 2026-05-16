@@ -1,18 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { Brain, Calendar, User, Menu, X, ChevronDown, Bell, LogOut } from "lucide-react";
 import { useRealUser } from "../hooks/useRealUser";
+import { notificationService, type Notification } from "../service/notificationService";
+import { getNotificationTitle, formatRelativeDate } from "../helpers/notificationHelpers";
 
 const TEAL = "#1A4A5C";
 const CORAL = "#E8856A";
 const FOG = "#EEF4F7";
 const SAGE = "#4E8B7A";
-
-const mockNotifications = [
-  { id: 1, text: "Cita con Dr. Carlos Mendez en 2 días", time: "hace 1h", read: false, type: "appointment" },
-  { id: 2, text: "Tu sesión fue confirmada exitosamente", time: "hace 3h", read: false, type: "success" },
-  { id: 3, text: "Recuerda completar tu perfil", time: "ayer", read: true, type: "info" },
-];
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -22,7 +18,55 @@ export function Navbar() {
   const location = useLocation();
   const { profile, loading, role } = useRealUser();
 
-  const unreadCount = mockNotifications.filter((n) => !n.read).length;
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [fetching, setFetching] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const fetchNotifications = async () => {
+      if (fetching) return;
+      setFetching(true);
+      try {
+        const data = await notificationService.getNotifications(profile.id);
+        setNotifications(data);
+        setUnreadCount(data.filter((n) => !n.read).length);
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+      } finally {
+        setFetching(false);
+      }
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [profile?.id]);
+
+  const handleMarkAllAsRead = async () => {
+    if (!profile?.id) return;
+    try {
+      await notificationService.markAllAsRead(profile.id);
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error("Error marking all as read:", error);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    if (!profile?.id) return;
+    try {
+      await notificationService.markAsRead(profile.id, notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(prev - 1, 0));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
 
   const navLinks = [
     { href: "/paciente", label: "Inicio" },
@@ -80,10 +124,13 @@ export function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
-            {/* Notifications (mock) */}
+            {/* Notificaciones */}
             <div className="relative">
               <button
-                onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
+                onClick={() => {
+                  setNotifOpen(!notifOpen);
+                  setProfileOpen(false);
+                }}
                 className="relative w-9 h-9 flex items-center justify-center rounded-xl border transition-all hover:shadow-sm"
                 style={{ borderColor: "rgba(26,74,92,0.15)", background: notifOpen ? FOG : "white" }}
               >
@@ -102,37 +149,38 @@ export function Navbar() {
                   <div className="flex items-center justify-between px-4 py-2 border-b mb-1" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
                     <p style={{ fontWeight: 700, fontSize: "0.875rem", color: TEAL }}>Notificaciones</p>
                     {unreadCount > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-white" style={{ background: CORAL, fontSize: "0.7rem", fontWeight: 700 }}>
-                        {unreadCount} nuevas
-                      </span>
+                      <button
+                        onClick={handleMarkAllAsRead}
+                        className="px-2 py-0.5 rounded-full text-white text-xs"
+                        style={{ background: CORAL }}
+                      >
+                        Marcar todas como leídas
+                      </button>
                     )}
                   </div>
-                  {mockNotifications.map((n) => (
-                    <div
-                      key={n.id}
-                      className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
-                    >
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-3 text-slate-500 text-sm">No tienes notificaciones</div>
+                  ) : (
+                    notifications.map((n) => (
                       <div
-                        className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                        style={{ background: n.read ? "#cbd5e1" : CORAL }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-slate-700" style={{ fontSize: "0.8rem", fontWeight: n.read ? 400 : 600 }}>
-                          {n.text}
-                        </p>
-                        <p className="text-slate-400 mt-0.5" style={{ fontSize: "0.72rem" }}>{n.time}</p>
+                        key={n.id}
+                        onClick={() => handleMarkAsRead(n.id)}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                      >
+                        <div
+                          className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                          style={{ background: n.read ? "#cbd5e1" : CORAL }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-700 text-sm font-medium">{getNotificationTitle(n.type)}</p>
+                          <p className="text-slate-500 text-xs">{n.message}</p>
+                          <p className="text-slate-400 text-xs mt-1">
+                            {formatRelativeDate(n.createdAt)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <div className="border-t mt-1 pt-2 px-4" style={{ borderColor: "rgba(26,74,92,0.08)" }}>
-                    <button
-                      className="w-full py-2 text-center rounded-lg transition-colors"
-                      style={{ fontSize: "0.8rem", fontWeight: 600, color: SAGE }}
-                      onClick={() => setNotifOpen(false)}
-                    >
-                      Ver todas las notificaciones
-                    </button>
-                  </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -152,7 +200,10 @@ export function Navbar() {
               <button
                 className="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all"
                 style={{ borderColor: "rgba(26,74,92,0.2)", background: profileOpen ? FOG : "white" }}
-                onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
+                onClick={() => {
+                  setProfileOpen(!profileOpen);
+                  setNotifOpen(false);
+                }}
               >
                 <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "#C8DDE8" }}>
                   <span style={{ color: TEAL, fontSize: "0.75rem", fontWeight: 700 }}>
@@ -178,7 +229,10 @@ export function Navbar() {
                   <button
                     className="w-full px-4 py-2.5 text-left flex items-center gap-2 transition-colors hover:bg-slate-50"
                     style={{ fontSize: "0.875rem", color: "#4a6572" }}
-                    onClick={() => { navigate("/paciente/perfil"); setProfileOpen(false); }}
+                    onClick={() => {
+                      navigate("/paciente/perfil");
+                      setProfileOpen(false);
+                    }}
                   >
                     <User size={15} style={{ color: TEAL }} />
                     Mi Perfil
@@ -186,7 +240,10 @@ export function Navbar() {
                   <button
                     className="w-full px-4 py-2.5 text-left flex items-center gap-2 transition-colors hover:bg-slate-50"
                     style={{ fontSize: "0.875rem", color: "#4a6572" }}
-                    onClick={() => { navigate("/paciente/mis-citas"); setProfileOpen(false); }}
+                    onClick={() => {
+                      navigate("/paciente/mis-citas");
+                      setProfileOpen(false);
+                    }}
                   >
                     <Calendar size={15} style={{ color: SAGE }} />
                     Mis Citas
@@ -244,7 +301,10 @@ export function Navbar() {
             Mi Perfil
           </Link>
           <button
-            onClick={() => { handleLogout(); setMobileOpen(false); }}
+            onClick={() => {
+              handleLogout();
+              setMobileOpen(false);
+            }}
             className="px-4 py-3 rounded-xl flex items-center gap-2 w-full text-left"
             style={{ color: "#4a6572", fontWeight: 500 }}
           >
