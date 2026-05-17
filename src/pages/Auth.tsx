@@ -6,6 +6,7 @@ import { authService } from "../service/authService";
 import { userService } from "../service/userService";
 import { jwtDecode } from "jwt-decode";
 import { AxiosError } from 'axios';
+import { getHomeRouteByRole } from "../utils/authRouting";
 
 const TEAL = "#1A4A5C";
 const TEAL_DARK = "#0D2E38";
@@ -98,14 +99,10 @@ export default function Auth() {
       localStorage.setItem("refreshToken", response.refreshToken);
 
       const decoded: { role: string } = jwtDecode(response.accessToken);
-      const userRole = decoded.role;
+      const homeRoute = getHomeRouteByRole(decoded.role);
 
-      if (userRole === "PATIENT") {
-        navigate("/paciente");
-      } else if (userRole === "PSYCHOLOGIST") {
-        navigate("/panel-psicologo");
-      } else if (userRole === "ADMIN") {
-        navigate("/admin");
+      if (homeRoute) {
+        navigate(homeRoute);
       } else {
         setError("Rol de usuario no reconocido");
       }

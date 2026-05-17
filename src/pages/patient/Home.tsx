@@ -172,9 +172,16 @@ export default function Home() {
       setEnrollSuccess(sessionId);
       const updated = await groupSessionService.getApprovedSessions();
       setGroupSessions(updated);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const msg = err.response?.data?.message || "No se pudo completar la inscripción";
+      let msg = "No se pudo completar la inscripción";
+      try {
+        const asObj = err as Record<string, unknown>;
+        const resp = asObj.response as Record<string, unknown> | undefined;
+        const data = resp?.data as Record<string, unknown> | undefined;
+        const maybe = data?.message ?? asObj.message;
+        if (typeof maybe === "string") msg = maybe;
+      } catch (err2) { void err2; }
       setEnrollError(msg);
     } finally {
       setEnrollingSessionId(null);
