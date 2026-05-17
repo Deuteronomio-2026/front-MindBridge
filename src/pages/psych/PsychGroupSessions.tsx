@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { Calendar, Clock, Users, Plus, X, Check, AlertCircle, Loader2, Video } from "lucide-react";
 import { groupSessionService, type GroupSession } from "../../service/groupSessionService";
@@ -28,7 +28,7 @@ export default function PsychGroupSessions() {
 
   const psychologistId = profile?.id;
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     if (!psychologistId) {
       setLoading(false);
       setError("No se pudo identificar al psicólogo. Asegúrate de haber iniciado sesión como psicólogo.");
@@ -45,13 +45,11 @@ export default function PsychGroupSessions() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [psychologistId]);
 
-  // loadSessions uses psychologistId; including psychologistId in deps is sufficient.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSessions();
-  }, [psychologistId]);
+  }, [loadSessions]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

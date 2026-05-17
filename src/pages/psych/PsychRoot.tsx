@@ -66,7 +66,7 @@ export default function PsychRoot() {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, [profile?.id]);
+  }, [profile?.id, fetching]);
 
   const handleMarkAllAsRead = async () => {
     if (!profile?.id) return;

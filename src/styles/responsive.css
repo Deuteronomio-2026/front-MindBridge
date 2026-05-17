@@ -1,0 +1,95 @@
+/* Responsive helpers for projection contexts */
+
+/* Breakpoints:
+   - small: up to 639px
+   - medium: 640px - 1023px
+   - large: 1024px - 1599px
+   - projector: 1600px and up
+*/
+
+/* Utility: responsive container that adapts padding for projected screens */
+.responsive-container {
+  width: 100%;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 640px) {
+  .responsive-container { padding-left: 1.5rem; padding-right: 1.5rem; }
+}
+
+@media (min-width: 1024px) {
+  .responsive-container { max-width: 1024px; padding-left: 2rem; padding-right: 2rem; }
+}
+
+@media (min-width: 1280px) {
+  .responsive-container { max-width: 1200px; padding-left: 3rem; padding-right: 3rem; }
+}
+
+@media (min-width: 1600px) {
+  /* Projector / wide screens: increase max-width and spacing */
+  .responsive-container { max-width: 1480px; padding-left: 4rem; padding-right: 4rem; }
+
+  /* Show larger typography for projected context */
+  .projected-text-lg { font-size: 1.25rem; }
+  .projected-logo-scale { transform: scale(1.05); }
+}
+
+/* Projector enhancements: bigger base font, more spacing and nav adjustments */
+@media (min-width: 1600px) {
+  html { font-size: 18px; }
+
+  .projected-text-xl { font-size: 1.5rem; }
+  .projected-text-lg { font-size: 1.35rem; }
+  .projector-hit-area { padding: 1.2rem 1.5rem; }
+
+  /* Nav: make desktop nav links larger and more spaced on projector */
+  .projector-nav-large { gap: 1rem !important; }
+  .projector-nav-large .nav-link { padding: 0.85rem 1.25rem !important; font-size: 1.05rem !important; }
+
+  /* Sidebar / cards: increase radius and spacing */
+  .responsive-container .rounded-3xl { padding: 1.5rem; }
+
+  /* Chat: increase message font-size and bubble padding */
+  .projector-chat .max-w-[82%] { padding: 1rem 1.25rem !important; }
+  .projector-chat p { font-size: 1rem !important; }
+
+  /* Show larger controls, hide minor UI to reduce clutter */
+  .hide-on-projector { display: none !important; }
+  .show-on-projector { display: inline-block !important; }
+
+  /* Emphasize primary actions on projector */
+  .projector-primary { font-size: 1.05rem !important; padding: 0.9rem 1.25rem !important; }
+}
+
+/* Layout helpers */
+.stack-on-mobile { display: flex; flex-direction: column; gap: 1rem; }
+@media (min-width: 768px) {
+  .stack-on-mobile { flex-direction: row; }
+}
+
+/* Hide elements on projector (useful for compact controls) */
+.hide-on-projector { display: initial; }
+@media (min-width: 1600px) {
+  .hide-on-projector { display: none !important; }
+}
+
+/* Show elements only on projector */
+.show-on-projector { display: none; }
+@media (min-width: 1600px) {
+  .show-on-projector { display: block !important; }
+}
+
+/* Slightly bigger clickable areas on projector */
+.projector-hit-area { padding: 0.75rem 1rem; }
+@media (min-width: 1600px) {
+  .projector-hit-area { padding: 1rem 1.25rem; }
+}
+
+/* Utility to reduce visual density on small screens */
+@media (max-width: 640px) {
+  .compact-on-mobile { padding: 0.5rem !important; }
+  .hide-text-mobile { display: none !important; }
+}

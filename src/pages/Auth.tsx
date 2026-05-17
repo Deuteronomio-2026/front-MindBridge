@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Brain, Eye, EyeOff, Check, ArrowRight, Loader } from "lucide-react";
-import { useGoogleLogin } from "@react-oauth/google";
+import { useGoogleLogin, type CodeResponse } from "@react-oauth/google";
 import { authService } from "../service/authService";
 import { userService } from "../service/userService";
 import { jwtDecode } from "jwt-decode";
@@ -51,7 +51,7 @@ export default function Auth() {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleGoogleLogin = useGoogleLogin({
-    onSuccess: async (codeResponse) => {
+    onSuccess: async (codeResponse: CodeResponse) => {
       if (!googleSelectedRole) {
         setError("Por favor selecciona un rol");
         return;

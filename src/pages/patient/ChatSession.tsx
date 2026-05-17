@@ -796,7 +796,7 @@ export default function ChatSession() {
     const device = sfuDeviceRef.current || new Device();
     if (!sfuDeviceRef.current) {
       const response = await requestSocket<{ rtpCapabilities: unknown }>(socket, "mediasoup:get-router-rtp-capabilities", { roomId });
-      await device.load({ routerRtpCapabilities: response.rtpCapabilities as any });
+      await device.load({ routerRtpCapabilities: response.rtpCapabilities as MediasoupTypes.RtpCapabilities });
       sfuDeviceRef.current = device;
     }
 
@@ -1101,7 +1101,7 @@ export default function ChatSession() {
     return () => {
       window.clearInterval(retryTimer);
     };
-  }, [participants, remoteStreamsVersion, selfUserId, stage]);
+  }, [participants, remoteStreamsVersion, selfUserId, stage, isGroupSession]);
 
   const joinCall = async () => {
     if (startedRef.current || isJoining) {
